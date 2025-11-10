@@ -1,0 +1,10 @@
+[custom.all.solid]
+type = "local"
+path = "."
+ipkg = "solid.ipkg"
+test = "test/test.ipkg"
+
+[custom.all.solid-test]
+type = "local"
+path = "test"
+ipkg = "test.ipkg"

@@ -1,0 +1,80 @@
+
+Sort : Type = (U : Type, El : U -> Type)
+
+TypeSort : Sort = (U = Type, El = \A => A)
+
+SizedSort : Bytes -> Sort = \b => { (U = Sized b, El = \A => Code A) }
+
+Tel : Sort -> Type
+Tel = ?f
+
+empty : [s] -> Tel s
+empty = ?g
+
+extend : [s : Sort] -> (A : s.U) -> (s.El A -> Tel s) -> Tel s
+extend = ?h
+
+TEL := Tel TypeSort
+
+
+User : Type = (
+  name : String,
+  age : Nat,
+  telephone : Nat,
+  friend : User,
+)
+
+kelsey : User = (
+  name = "Kelsey",
+  age = 1919,
+  telephone = 283238423,
+  friend = ()
+)
+
+alex : User = (
+  name = "Alex",
+  age = 24,
+  telephone = 283238423,
+  friend = kelsey
+)
+
+main := {
+  for (lines x) { \l =>
+    print l
+  }
+}
+
+()
+
+-- Nat : U
+-- Nat = (A : U) -> A -> (A -> A) -> A
+
+-- zero : Nat
+-- zero A z s = z
+
+-- succ : Nat -> Nat
+--   = \n A z s => s (n A z s)
+
+-- elim : (A : U) -> A -> (A -> A) -> Nat -> A
+--   = \A z s n => n A z s
+
+-- add : Nat -> Nat -> Nat
+--   = \a b => elim Nat b succ a
+
+-- mul : Nat -> Nat -> Nat
+--   = \a b => elim Nat zero (add a) b
+
+-- exp : Nat -> Nat -> Nat
+--   = \a b => elim Nat (succ zero) (mul a) b
+
+-- two := succ (succ zero)
+
+-- four := add two two
+
+-- eight := mul two four
+
+-- ten := add eight two
+
+-- twenty := mul two ten
+
+-- ([res] = four, five, six)
