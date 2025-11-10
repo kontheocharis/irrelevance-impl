@@ -29,35 +29,44 @@ Eq PiMode where
 public export
 Name : Type
 Name = String
+  
+public export
+data Mode = Zero | Unres
+
+public export
+DecEq Mode where
+  decEq Zero Zero = Yes Refl
+  decEq Unres Unres = Yes Refl
+  decEq Zero Unres = No (\Refl impossible)
+  decEq Unres Zero = No (\Refl impossible)
+
+public export
+Eq Mode where
+  a == b = isYes $ decEq a b
+
+public export
+Show Mode where
+  show Zero = "0"
+  show Unres = "ω"
+  
+modeIdentPrefix : Mode -> String
+modeIdentPrefix Zero = "0 "
+modeIdentPrefix Unres = ""
+
+public export
+Idiom : Type
+Idiom = (PiMode, Mode)
 
 -- A name is a member of a 'context skeleton'
 public export
-0 Ident : Type
-Ident = (PiMode, Name)
+Ident : Type
+Ident = (Idiom, Name)
+
+-- automatic decidable equality check
+decEqIdent : DecEq Ident
+decEqIdent = %search
 
 public export
 [showIdent] Show Ident where
-  show (Explicit, n) = n
-  show (Implicit, n) = "[" ++ n ++ "]"
-
--- The stage we are in
---
--- This is a two-level language.
-public export
-data Stage = Obj | Mta
-
-public export
-DecEq Stage where
-  decEq Obj Obj = Yes Refl
-  decEq Mta Mta = Yes Refl
-  decEq Obj Mta = No (\Refl impossible)
-  decEq Mta Obj = No (\Refl impossible)
-
-public export
-Eq Stage where
-  a == b = isYes (decEq a b)
-
-public export
-Show Stage where
-  show Mta = "mta"
-  show Obj = "obj"
+  show ((Explicit, m), n) = modeIdentPrefix m ++ n
+  show ((Implicit, m), n) = "[" ++ modeIdentPrefix m ++ n ++ "]"

@@ -18,10 +18,10 @@ import Core.Combinators
 import Core.Context
 
 arg : {n : _} -> Expr ns -> (Singleton n, Annot ns)
-arg e = (Val _, e.a)
+arg e = (Val _, e.ty)
 
 argN : {m : _} -> (n : String) -> Expr ns -> (Singleton (m, n), Annot ns)
-argN _ e = (Val _, e.a)
+argN _ e = (Val _, e.ty)
 
 ret : Expr ns -> Annot ns
 ret = (.a)

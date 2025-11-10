@@ -50,7 +50,7 @@ escapeBinder sn AreDifferent = AreDifferent
 escapeBinder sn DontKnow = DontKnow
 escapeBinder (Just (Val n)) (Error {under = ar} err) = Error {under = n :: ar} err
 escapeBinder Nothing (Error {under = ar} err)
-  = Error {under = (Explicit, "_") :: ar} (relabel (keepMany @{ar.count} (Change _ Id)) err)
+  = Error {under = ((Explicit, Unres), "_") :: ar} (relabel (keepMany @{ar.count} (Change _ Id)) err)
 
 -- The typeclass for unification
 --
@@ -190,25 +190,19 @@ unifyValues : {sm : SolvingMode} -> Unify sm (Term Value) (Term Value)
 
 -- Unification outcome depends on reducibility
 -- Conservative for lets.
---
--- Must also be in the same stage to be unifiable.
-{sm : SolvingMode} -> {r, r' : Reducibility} -> Unify sm (Binder md r Value n) (Binder md r' Value n') where
-  unifyImpl ctx (BindMtaLam _) (BindMtaLam _) = pure AreSame
-  -- unification presupposes same-typedness of both sides so we don't need to check the data here
-  unifyImpl ctx (BindObjLam _ _ _) (BindObjLam _ _ _) = pure AreSame
-  unifyImpl ctx (BindMtaLet _ tyA a) (BindMtaLet _ tyB b) = noSolving ((unify ctx tyA tyB /\ unify ctx a b) \/ pure DontKnow)
-  -- same here
-  unifyImpl ctx (BindObjLet _ _ tyA a) (BindObjLet _ _ tyB b) = noSolving ((unify ctx tyA tyB /\ unify ctx a b) \/ pure DontKnow)
-  unifyImpl ctx (BindMtaPi _ a) (BindMtaPi _ b) = unify ctx a b
-  unifyImpl ctx (BindObjPi _ ba bb a) (BindObjPi _ ba' bb' a') = unify ctx ba ba' /\ unify ctx bb bb' /\ unify ctx a a'
+{sm : SolvingMode} -> {r, r' : Reducibility} -> Unify sm (Binder r Value n) (Binder r' Value n') where
+  --@@TODO: unify idioms
+  unifyImpl ctx (BindLam _) (BindLam _) = pure AreSame
+  unifyImpl ctx (BindLet _ tyA a) (BindLet _ tyB b) = noSolving ((unify ctx tyA tyB /\ unify ctx a b) \/ pure DontKnow)
+  unifyImpl ctx (BindPi _ a) (BindPi _ b) = unify ctx a b
   unifyImpl ctx {r = Rigid} {r' = Rigid} _ _ = pure AreDifferent
   unifyImpl ctx _ _ = pure DontKnow
 
 Unify SolvingNotAllowed (Variable Value) (Variable Value) where
   unifyImpl ctx (Level l) (Level l') = unify ctx l l'
 
-{sm : SolvingMode} -> {r, r' : Reducibility} -> Unify sm (Binding md r Value) (Binding md r' Value) where
-  unifyImpl ctx (Bound md bindA (Closure {n = n} envA tA)) (Bound md bindB (Closure envB tB))
+{sm : SolvingMode} -> {r, r' : Reducibility} -> Unify sm (Binding r Value) (Binding r' Value) where
+  unifyImpl ctx (Bound bindA (Closure {n = n} envA tA)) (Bound bindB (Closure envB tB))
     -- unify ctx the binders
     = unify ctx bindA bindB
       -- unify ctx the bodies, retaining the name of the first binder (kind of arbirary..)
@@ -243,8 +237,6 @@ Unify SolvingNotAllowed (Head Value Simplified) (Head Value Simplified) where
 Unify SolvingNotAllowed (Head Value Normalised) (Head Value Normalised) where
   -- conservative
   unifyImpl ctx (ValVarWithDef v) (ValVarWithDef v') = unify ctx v v'
-  unifyImpl ctx (ObjCallable a) (ObjCallable a') = unify ctx a a'
-  unifyImpl ctx (ObjLazy a) (ObjLazy b) = unify ctx a b
   unifyImpl ctx (PrimNeutral p) (PrimNeutral p') = noSolving (unify ctx p p')
   unifyImpl ctx _ _ = pure DontKnow
 
@@ -265,10 +257,9 @@ export
   resolveLhs ctx x = resolve (metaResolver <+> gluedVarResolver ctx <+> primResolver) x
   resolveRhs ctx x = resolve (metaResolver <+> gluedVarResolver ctx <+> primResolver) x
 
-  unifyImpl ctx (MtaCallable m) (MtaCallable m') = unify ctx m m'
+  unifyImpl ctx (CallableTm m) (CallableTm m') = unify ctx m m'
   unifyImpl ctx (SimpPrimNormal p) (SimpPrimNormal p') = unify ctx p p'
-  unifyImpl ctx (SimpObjCallable o) (SimpObjCallable o') = unify ctx o o'
-  unifyImpl ctx (RigidBinding md r) (RigidBinding md' r') = ifAndOnlyIf (decEq md md') (\Refl => unify ctx r r')
+  unifyImpl ctx (RigidBinding r) (RigidBinding r') = unify ctx r r'
 
   -- Solve metas
   unifyImpl ctx a (SimpApps (ValMeta m' $$ sp')) = solve ctx m' sp' a

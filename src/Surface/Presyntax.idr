@@ -88,8 +88,6 @@ record Directive where
 -- All known directives
 public export
 data KnownDirective : Type where
-  MtaDir : KnownDirective 
-  ObjDir : KnownDirective 
   PrimitiveDir : KnownDirective
   DebugCtx : KnownDirective
   DebugTerm : KnownDirective
@@ -98,15 +96,8 @@ data KnownDirective : Type where
   DebugTypeExp : KnownDirective
   Import : KnownDirective
   
-export
-fromStage : Stage -> KnownDirective
-fromStage Obj = ObjDir
-fromStage Mta = MtaDir
-  
 export covering
 (.asDirective) : KnownDirective -> Directive
-(.asDirective) MtaDir = MkDirective "mta"
-(.asDirective) ObjDir = MkDirective "obj"
 (.asDirective) PrimitiveDir = MkDirective "primitive"
 (.asDirective) DebugCtx = MkDirective "debug-ctx"
 (.asDirective) DebugTerm = MkDirective "debug-term"
@@ -117,8 +108,6 @@ export covering
   
 export covering
 parseDirective : Directive -> Maybe KnownDirective
-parseDirective (MkDirective "mta") = Just MtaDir
-parseDirective (MkDirective "obj") = Just ObjDir
 parseDirective (MkDirective "primitive") = Just PrimitiveDir
 parseDirective (MkDirective "debug-ctx") = Just DebugCtx
 parseDirective (MkDirective "debug-term") = Just DebugTerm
@@ -130,8 +119,6 @@ parseDirective _ = Nothing
 
 export covering
 directiveCoh : {k : _} -> parseDirective k.asDirective = Just k
-directiveCoh {k = MtaDir} = Refl
-directiveCoh {k = ObjDir} = Refl
 directiveCoh {k = PrimitiveDir} = Refl
 directiveCoh {k = DebugCtx} = Refl
 directiveCoh {k = DebugTerm} = Refl
@@ -183,7 +170,6 @@ public export
 record PGoal where
   constructor MkPGoal
   ctx : PBlockStatements
-  holeStage : Stage
   holeTm : PTm
   holeTy : PTy
 
@@ -275,36 +261,36 @@ showAtomic t = if isAtomic t then show t else "(" ++ show t ++ ")"
 
 public export covering
 Show (PParam Functions) where
-  show (MkPParam l (Explicit, n) (Just t)) = "(" ++ n ++ " : " ++ show t ++ ")"
-  show (MkPParam l (Implicit, n) (Just t)) = "[" ++ n ++ " : " ++ show t ++ "]"
-  show (MkPParam l (Explicit, n) Nothing) = "(" ++ n ++ " : _)"
-  show (MkPParam l (Implicit, n) Nothing) = "[" ++ n ++ "]"
+  show (MkPParam l ((Explicit, m), n) (Just t)) = "(" ++ n ++ " : " ++ show t ++ ")"
+  show (MkPParam l ((Implicit, m), n) (Just t)) = "[" ++ n ++ " : " ++ show t ++ "]"
+  show (MkPParam l ((Explicit, m), n) Nothing) = "(" ++ n ++ " : _)"
+  show (MkPParam l ((Implicit, m), n) Nothing) = "[" ++ n ++ "]"
 
 public export covering
 Show (PParam Pairs) where
-  show (MkPParam l (Explicit, n) (Just t)) = n ++ " : " ++ show t
-  show (MkPParam l (Explicit, "_") (Just t)) = show t
-  show (MkPParam l (Implicit, n) (Just t)) = "[" ++ n ++ "] : " ++ show t
-  show (MkPParam l (Explicit, n) Nothing) = n ++ " : _"
-  show (MkPParam l (Implicit, n) Nothing) = "[" ++ n ++ "]"
+  show (MkPParam l ((Explicit, m), n) (Just t)) = n ++ " : " ++ show t
+  show (MkPParam l ((Explicit, m), "_") (Just t)) = show t
+  show (MkPParam l ((Implicit, m), n) (Just t)) = "[" ++ n ++ "] : " ++ show t
+  show (MkPParam l ((Explicit, m), n) Nothing) = n ++ " : _"
+  show (MkPParam l ((Implicit, m), n) Nothing) = "[" ++ n ++ "]"
 
 public export covering
 Show (PArg Functions) where
-  show (MkPArg l (Just (Explicit, "_")) t) = showAtomic t
-  show (MkPArg l (Just (Explicit, n)) t) = "(" ++ n ++ " = " ++ show t ++ ")"
-  show (MkPArg l (Just (Implicit, n)) t) = "[" ++ n ++ " = " ++ show t ++ "]"
+  show (MkPArg l (Just ((Explicit, m), "_")) t) = showAtomic t
+  show (MkPArg l (Just ((Explicit, m), n)) t) = "(" ++ n ++ " = " ++ show t ++ ")"
+  show (MkPArg l (Just ((Implicit, m), n)) t) = "[" ++ n ++ " = " ++ show t ++ "]"
   show (MkPArg l Nothing t) = showAtomic t
 
 public export covering
 Show (PArg Pairs) where
-  show (MkPArg l (Just (Explicit, n)) t) = n ++ " = " ++ show t
-  show (MkPArg l (Just (Implicit, n)) t) = "[" ++ n ++ "] = " ++ show t
+  show (MkPArg l (Just ((Explicit, m), n)) t) = n ++ " = " ++ show t
+  show (MkPArg l (Just ((Implicit, m), n)) t) = "[" ++ n ++ "] = " ++ show t
   show (MkPArg l Nothing t) = show t
 
 -- [A] (x : A) [z : B]
 public export covering
 Show (PTel Functions) where
-  show (MkPTel [MkPParam l (Explicit, "_") (Just t)]) = showAtomic t
+  show (MkPTel [MkPParam l ((Explicit, m), "_") (Just t)]) = showAtomic t
   show (MkPTel []) = ""
   show (MkPTel ts) = (map show ts |> cast |> joinBy " ")
 
@@ -345,8 +331,8 @@ Show PBlockStatements where
 
 public export covering
 Show PGoal where
-  show (MkPGoal ctx holeStage holeTm holeTy)
-    = "\{show ctx}\n------------\n\{show (fromStage holeStage).asDirective} \{show holeTm} : \{show holeTy}"
+  show (MkPGoal ctx holeTm holeTy)
+    = "\{show ctx}\n------------\{show holeTm} : \{show holeTy}"
 
 public export total
 Show BinOp where

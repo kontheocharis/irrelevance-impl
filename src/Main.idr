@@ -20,9 +20,9 @@ import Control.Monad.State
 showUsage : IO ()
 showUsage = do
   putStrLn "Usage:"
-  putStrLn "  solid <filename> [--until <stage>]     Process a source file"
-  putStrLn "  solid -e <expr>                        Evaluate an expression"
-  putStrLn "  solid -h                               Show this help message"
+  putStrLn "  irr <filename> [--until <stage>]     Process a source file"
+  putStrLn "  irr -e <expr>                        Evaluate an expression"
+  putStrLn "  irr -h                               Show this help message"
   putStrLn ""
   putStrLn "Stages:"
   for_ allOptions $ \opt => putStrLn $ "  - " ++ opt
@@ -52,3 +52,6 @@ main = do
       putStrLn "Invalid arguments"
       showUsage
       exitWith (ExitFailure 1)
+
+
+data Tm : Nat -> Type where

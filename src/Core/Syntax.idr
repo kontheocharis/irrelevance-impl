@@ -55,55 +55,40 @@ export infixr 5 $$
 -- Each of these might carry some data, which we mostly care about
 -- during codegen
 public export
-data BinderShape : Stage -> Reducibility -> (tm : Ctx -> Type) -> Ident -> Ctx -> Type where
+data BinderShape : Reducibility -> (tm : Ctx -> Type) -> Ident -> Ctx -> Type where
   -- Internal lambda, does not store a name
-  InternalLam : BinderShape s Callable tm n ns
+  InternalLam : BinderShape Callable tm n ns
 
-  -- Meta-level lambda
-  BindMtaLam : (n : Ident) -> BinderShape Mta Callable tm n ns
+  -- Lambda
+  BindLam : (n : Ident) -> BinderShape Callable tm n ns
 
-  -- Object-level lambda
-  BindObjLam : (n : Ident) -> (domBytes : tm ns) -> (codBytes : tm ns) -> BinderShape Obj Callable tm n ns
+  -- Let
+  BindLet : (n : Ident) -> (ty : tm ns) -> (rhs : tm ns) -> BinderShape Thunk tm n ns
 
-  -- Meta-level let
-  BindMtaLet : (n : Ident) -> (ty : tm ns) -> (rhs : tm ns) -> BinderShape Mta Thunk tm n ns
-
-  -- Object-level let
-  BindObjLet : (n : Ident) -> (tyBytes : tm ns) -> (ty : tm ns) -> (rhs : tm ns) -> BinderShape Obj Thunk tm n ns
-
-  -- Meta-level pi
-  BindMtaPi : (n : Ident) -> (dom : tm ns) -> BinderShape Mta Rigid tm n ns
-
-  -- Object-level pi
-  BindObjPi : (n : Ident) -> (domBytes : tm ns) -> (codBytes : tm ns) -> (dom : tm ns) -> BinderShape Obj Rigid tm n ns
+  -- Pi
+  BindPi : (n : Ident) -> (dom : tm ns) -> BinderShape Rigid tm n ns
 
 public export
-0 Binder : Stage -> Reducibility -> Domain -> Ident -> Ctx -> Type
-Binder s r d = BinderShape s r (Term d)
+0 Binder : Reducibility -> Domain -> Ident -> Ctx -> Type
+Binder r d = BinderShape r (Term d)
 
 public export
-traverseBinder : Applicative f => (tm ns -> f (tm' ms)) -> BinderShape md r tm n ns -> f (BinderShape md r tm' n ms)
+traverseBinder : Applicative f => (tm ns -> f (tm' ms)) -> BinderShape r tm n ns -> f (BinderShape r tm' n ms)
 traverseBinder _ InternalLam = pure InternalLam
-traverseBinder _ (BindMtaLam n) = pure (BindMtaLam n)
-traverseBinder f (BindObjLam n ba bb) = BindObjLam n <$> f ba <*> f bb
-traverseBinder f (BindMtaLet n ty t) = BindMtaLet n <$> f ty <*> f t
-traverseBinder f (BindObjLet n bty ty t) = BindObjLet n <$> f bty <*> f ty <*> f t
-traverseBinder f (BindMtaPi n a) = BindMtaPi n <$> f a
-traverseBinder f (BindObjPi n ba bb a) = BindObjPi n <$> f ba <*> f bb <*> f a
+traverseBinder _ (BindLam n) = pure (BindLam n)
+traverseBinder f (BindLet n ty t) = BindLet n <$> f ty <*> f t
+traverseBinder f (BindPi n a) = BindPi n <$> f a
 
 public export
-mapBinder : (tm ns -> tm' ms) -> BinderShape md r tm n ns -> BinderShape md r tm' n ms
+mapBinder : (tm ns -> tm' ms) -> BinderShape r tm n ns -> BinderShape r tm' n ms
 mapBinder f b = (traverseBinder (Id . f) b).runIdentity
 
 public export
-displayIdent : BinderShape md r tm n ns -> Maybe (Singleton n)
+displayIdent : BinderShape r tm n ns -> Maybe (Singleton n)
 displayIdent InternalLam = Nothing
-displayIdent (BindMtaLam n) = Just (Val n)
-displayIdent (BindObjLam n _ _) = Just (Val n)
-displayIdent (BindMtaLet n _ _) = Just (Val n)
-displayIdent (BindObjLet n _ _ _) = Just (Val n)
-displayIdent (BindObjPi n _ _ _) = Just (Val n)
-displayIdent (BindMtaPi n _) = Just (Val n)
+displayIdent (BindLam n) = Just (Val n)
+displayIdent (BindLet n _ _) = Just (Val n)
+displayIdent (BindPi n _) = Just (Val n)
 
 -- Variables are de-Brujin indices or levels depending on if we are in value or
 -- syntax ~> fast variable lookup during evaluation, and free weakening for
@@ -124,8 +109,8 @@ data Body : Domain -> Ident -> Ctx -> Type where
 
 -- Helper to package a binder with its body.
 public export
-data Binding : Stage -> Reducibility -> Domain -> Ctx -> Type where
-  Bound : (md : Stage) -> Binder md r d n ns -> Body d n ns -> Binding md r d ns
+data Binding : Reducibility -> Domain -> Ctx -> Type where
+  Bound : Binder r d n ns -> Body d n ns -> Binding r d ns
 
 -- Different spine heads, meaning x in `x a1 ... an`, are reduced
 -- to different extents.
@@ -170,14 +155,7 @@ data Head : (d : Domain) -> HeadKind d -> Ctx -> Type where
   ValMeta : MetaVar -> Head Value Simplified ns
 
   -- A syntactic binding
-  SynBinding : (s : Stage) -> (r : Reducibility) -> Binding s r Syntax ns -> Head Syntax NA ns
-
-  -- Meta-level callable bindings cannot appear as heads in values.
-  --
-  -- Thus, all we have are object-level bindings (which are merely normalised because
-  -- they can technically be more simplified)
-  ObjCallable : Binding Obj Callable Value ns -> Head Value Normalised ns
-  ObjLazy : Binding Obj Thunk Value ns -> Head Value Normalised ns
+  SynBinding : (r : Reducibility) -> Binding r Syntax ns -> Head Syntax NA ns
 
   -- An applied primitive can only be a head if it is neutral.
   PrimNeutral : PrimitiveApplied PrimNeu d e ns -> Head d e ns
@@ -215,16 +193,11 @@ data Term where
   -- Cannot be reduced further
   SimpApps : HeadApplied Value Simplified ns -> Term Value ns
 
-  -- Callable meta binding, never applied to a spine
-  MtaCallable : Binding Mta Callable Value ns -> Term Value ns
-
-  -- Callable object binding that must be simplified if applied to anything.
-  --
-  -- If it shouldn't be simplified it should be a GluedApps (ObjCallable ..) instead.
-  SimpObjCallable : Binding Obj Callable Value ns -> Term Value ns
+  -- Callable binding, never applied to a spine
+  CallableTm : Binding Callable Value ns -> Term Value ns
 
   -- Rigid binding, never applied (e.g. Pi).
-  RigidBinding : (md : Stage) -> Binding md Rigid d ns -> Term d ns
+  RigidBinding : Binding Rigid d ns -> Term d ns
 
   -- Normal primitives, never applied.
   SynPrimNormal : PrimitiveApplied PrimNorm Syntax NA ns -> Term Syntax ns
@@ -257,7 +230,7 @@ Env ms ns = Sub ms Val ns
 
 public export
 internalLam : (0 n : Ident) -> Tm (ns :< n) -> Tm ns
-internalLam _ t = SynApps (SynBinding Mta Callable (Bound Mta InternalLam (Delayed t)) $$ [])
+internalLam _ t = SynApps (SynBinding Callable (Bound InternalLam (Delayed t)) $$ [])
 
 public export
 closeWithLams : Size ns -> Tm ns -> Tm [<]
@@ -273,28 +246,16 @@ varLvl : Lvl ns -> Val ns
 varLvl l = SimpApps (ValVar (Level l) $$ [])
 
 public export
-sMtaLam : (n : Ident) -> Tm (ns :< n) -> Tm ns
-sMtaLam n t = SynApps (SynBinding _ Callable (Bound _ (BindMtaLam n) (Delayed t)) $$ [])
+sLam : (n : Ident) -> Tm (ns :< n) -> Tm ns
+sLam n t = SynApps (SynBinding Callable (Bound (BindLam n) (Delayed t)) $$ [])
 
 public export
-sObjLam : (n : Ident) -> Tm ns -> Tm ns -> Tm (ns :< n) -> Tm ns
-sObjLam n ba bb t = SynApps (SynBinding _ Callable (Bound _ (BindObjLam n ba bb) (Delayed t)) $$ [])
+vPi : (n : Ident) -> ValTy ns -> Body Value n ns -> ValTy ns
+vPi n ty body = RigidBinding (Bound (BindPi n ty) body)
 
 public export
-vMtaPi : (n : Ident) -> ValTy ns -> Body Value n ns -> ValTy ns
-vMtaPi n ty body = RigidBinding _ (Bound _ (BindMtaPi n ty) body)
-
-public export
-sMtaPi : (n : Ident) -> Ty ns -> Ty (ns :< n) -> Ty ns
-sMtaPi n ty body = SynApps (SynBinding _ Rigid (Bound _ (BindMtaPi n ty) (Delayed body)) $$ [])
-
-public export
-sObjPi : (n : Ident) -> Tm ns -> Tm ns -> Ty ns -> Ty (ns :< n) -> Ty ns
-sObjPi n ba bb a b = SynApps (SynBinding _ Rigid (Bound _ (BindObjPi n ba bb a) (Delayed b)) $$ [])
-
-public export
-vObjPi : (n : Ident) -> Val ns -> Val ns -> ValTy ns -> Body Value n ns -> ValTy ns
-vObjPi n ba bb ty body = RigidBinding _ (Bound _ (BindObjPi n ba bb ty) body)
+sPi : (n : Ident) -> Ty ns -> Ty (ns :< n) -> Ty ns
+sPi n ty body = SynApps (SynBinding Rigid (Bound (BindPi n ty) (Delayed body)) $$ [])
 
 public export
 sPrim : {k : PrimitiveClass} -> {r : PrimitiveReducibility} -> Primitive k r na ar -> Spine ar Tm ns -> Tm ns
@@ -305,7 +266,7 @@ public export
 sApps : Tm ns -> Spine ar Tm ns -> Tm ns
 sApps q [] = q
 sApps (SynApps (h $$ sp')) sp = SynApps (h $$ sp' ++ sp)
-sApps (RigidBinding md x) sp = error "ill-typed (trying to apply to a rigid binding)"
+sApps (RigidBinding x) sp = error "ill-typed (trying to apply to a rigid binding)"
 sApps (SynPrimNormal (x $$ _)) sp = error "ill-typed (trying to apply to a normal primitive: \{primName x})"
 
 public export
@@ -322,7 +283,6 @@ public export
 varApp : (n : String) -> {auto prf : In n ns} -> Ident -> Term Syntax ns -> Tm ns
 varApp n {prf = prf} a v = SynApps (SynVar (Index (idx @{prf})) $$ ((::) (Val a, v) []))
 
-  
 -- Readonly metas view
 export
 record Metas where
@@ -357,7 +317,7 @@ export covering
 Relabel (Term d)
 
 export covering
-Relabel (Binder s r d n) where
+Relabel (Binder r d n) where
   relabel r b = mapBinder (relabel r) b
 
 export covering
@@ -366,8 +326,8 @@ Relabel (Body d n) where
   relabel r (Closure x y) = Closure (r . x) (relabel (Change _ Id) y)
 
 export covering
-Relabel (Binding s r d) where
-  relabel r (Bound md b body) = Bound md (relabel r b) (relabel r body)
+Relabel (Binding r d) where
+  relabel r (Bound b body) = Bound (relabel r b) (relabel r body)
   
 export covering
 Relabel (PrimitiveApplied c d k) where
@@ -387,9 +347,7 @@ Relabel (Head d hk) where
   relabel r (ValVarWithDef x) = ValVarWithDef (relabel r x)
   relabel r (SynMeta x) = SynMeta x
   relabel r (ValMeta x) = ValMeta x
-  relabel r (SynBinding s x y) = SynBinding s x (relabel r y)
-  relabel r (ObjCallable x) = ObjCallable (relabel r x)
-  relabel r (ObjLazy x) = ObjLazy (relabel r x)
+  relabel r (SynBinding x y) = SynBinding x (relabel r y)
   relabel r (PrimNeutral x) = PrimNeutral (relabel r x)
 
 export covering
@@ -406,9 +364,8 @@ Relabel (Term d) where
   relabel r (SynApps x) = SynApps (relabel r x)
   relabel r (Glued x) = Glued (relabel r x)
   relabel r (SimpApps x) = SimpApps (relabel r x)
-  relabel r (MtaCallable x) = MtaCallable (relabel r x)
-  relabel r (SimpObjCallable x) = SimpObjCallable (relabel r x)
-  relabel r (RigidBinding md x) = RigidBinding md (relabel r x)
+  relabel r (CallableTm x) = CallableTm (relabel r x)
+  relabel r (RigidBinding x) = RigidBinding (relabel r x)
   relabel r (SynPrimNormal x) = SynPrimNormal (relabel r x)
   relabel r (SimpPrimNormal x) = SimpPrimNormal (relabel r x)
   
@@ -427,7 +384,7 @@ Weak (PrimitiveApplied k Value e) where
   weak e (LazyApplied h sp gl) = LazyApplied h (weak e sp) (weak e gl)
 
 export covering
-Weak (Binder md r Value n) where
+Weak (Binder r Value n) where
   weak e b = mapBinder (weak e) b
 
 export covering
@@ -439,16 +396,14 @@ Weak (Body Value n) where
   weak e (Closure env t) = Closure (env . e) t
 
 export covering
-Weak (Binding md r Value) where
-  weak s (Bound {n = n} md bind body) = Bound {n = n} md (weak s bind) (weak s body)
+Weak (Binding r Value) where
+  weak s (Bound {n = n} bind body) = Bound {n = n} (weak s bind) (weak s body)
 
 export covering
 Weak (Head Value hk) where
   weak s (ValVar v) = ValVar (weak s v)
   weak s (ValVarWithDef v) = ValVarWithDef (weak s v)
   weak s (ValMeta m) = ValMeta m
-  weak s (ObjCallable t) = ObjCallable (weak s t)
-  weak s (ObjLazy t) = ObjLazy (weak s t)
   weak s (PrimNeutral p) = PrimNeutral (weak s p)
 
 export covering
@@ -460,9 +415,8 @@ Weak (Term Value) where
   weak e (Glued (LazyApps a f)) = Glued (LazyApps (weak e a) (weak e f))
   weak e (Glued (LazyPrimNormal a)) = Glued (LazyPrimNormal (weak e a))
   weak e (SimpApps a) = SimpApps (weak e a)
-  weak e (MtaCallable c) = MtaCallable (weak e c)
-  weak e (SimpObjCallable c) = SimpObjCallable (weak e c)
-  weak e (RigidBinding md c) = RigidBinding md (weak e c)
+  weak e (CallableTm c) = CallableTm (weak e c)
+  weak e (RigidBinding c) = RigidBinding (weak e c)
   weak e (SimpPrimNormal p) = SimpPrimNormal (weak e p)
 
 -- Thinning
@@ -470,7 +424,7 @@ export covering
 Thin (Term d)
 
 export covering
-Thin (Binder s r d n) where
+Thin (Binder r d n) where
   thin r b = mapBinder (thin r) b
 
 export covering
@@ -479,8 +433,8 @@ Thin (Body d n) where
   thin r (Closure x y) = Closure (x . r) y
 
 export covering
-Thin (Binding s r d) where
-  thin r (Bound md b body) = Bound md (thin r b) (thin r body)
+Thin (Binding r d) where
+  thin r (Bound b body) = Bound (thin r b) (thin r body)
   
 export covering
 Thin (PrimitiveApplied c d k) where
@@ -500,9 +454,7 @@ Thin (Head d hk) where
   thin r (ValVarWithDef x) = ValVarWithDef (thin r x)
   thin r (SynMeta x) = SynMeta x
   thin r (ValMeta x) = ValMeta x
-  thin r (SynBinding s x y) = SynBinding s x (thin r y)
-  thin r (ObjCallable x) = ObjCallable (thin r x)
-  thin r (ObjLazy x) = ObjLazy (thin r x)
+  thin r (SynBinding x y) = SynBinding x (thin r y)
   thin r (PrimNeutral x) = PrimNeutral (thin r x)
 
 export covering
@@ -519,8 +471,7 @@ Thin (Term d) where
   thin r (SynApps x) = SynApps (thin r x)
   thin r (Glued x) = Glued (thin r x)
   thin r (SimpApps x) = SimpApps (thin r x)
-  thin r (MtaCallable x) = MtaCallable (thin r x)
-  thin r (SimpObjCallable x) = SimpObjCallable (thin r x)
-  thin r (RigidBinding md x) = RigidBinding md (thin r x)
+  thin r (CallableTm x) = CallableTm (thin r x)
+  thin r (RigidBinding x) = RigidBinding (thin r x)
   thin r (SynPrimNormal x) = SynPrimNormal (thin r x)
   thin r (SimpPrimNormal x) = SimpPrimNormal (thin r x)

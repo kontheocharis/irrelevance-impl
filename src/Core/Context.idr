@@ -28,12 +28,8 @@ record Context (bs : Ctx) (ns : Ctx) where
   bindIdents : Singleton bs
   -- The current context (types)
   con : Con AtomTy ns
-  -- The current context (sorts)
-  sorts : Con AtomTy ns
   -- The definitions in the context
   scope : Scope bs Atom ns
-  -- The stages of the definitions in the context
-  stages : Con (const Stage) ns
   -- The bound variables in the context, in the form of a spine ready to be applied
   -- to a metavariable.
   binds : Spine (ctxToArity bs) AtomTy ns
@@ -41,13 +37,13 @@ record Context (bs : Ctx) (ns : Ctx) where
 public export
 emptyContext : Context [<] [<]
 emptyContext =
-  MkContext (Val [<]) (Val [<]) [<] [<] (MkScope SZ SZ [<]) [<] []
+  MkContext (Val [<]) (Val [<]) [<] (MkScope SZ SZ [<]) []
  
 -- A goal is a hole in a context.
 public export
 record Goal where
   constructor MkGoal
-  {0 bindNs : Ctx}
+ 
   {0 conNs : Ctx}
 
   -- The name of the goal hole, if given
@@ -76,7 +72,7 @@ lookup ctx n = findIdx ctx.idents n
   where
     findIdx : forall ns . Singleton ns -> Name -> Maybe (Idx ns)
     findIdx (Val [<]) n = Nothing
-    findIdx (Val (ns :< (m, n'))) n = case n == n' of
+    findIdx (Val (ns :< (i, n'))) n = case n == n' of
       True => Just IZ
       False => do
         idx <- findIdx (Val ns) n
@@ -84,12 +80,12 @@ lookup ctx n = findIdx ctx.idents n
 
 -- Add a binding with no value to the context.
 public export
-bind : {s : Stage} -> (n : Ident) -> AnnotAt s ns -> Context bs ns -> Context (bs :< n) (ns :< n)
-bind {s = stage} n (MkAnnotAt ty sort) (MkContext (Val idents) (Val bi) con sorts defs stages bounds) =
-  MkContext (Val (idents :< n)) (Val (bi :< n)) (con :< ty) (sorts :< sort) (lift defs) (stages :< stage) (wkS bounds ++ [(Val _, here)])
+bind : (n : Ident) -> Annot ns -> Context bs ns -> Context (bs :< n) (ns :< n)
+bind n ty (MkContext (Val idents) (Val bi) con defs bounds) =
+  MkContext (Val (idents :< n)) (Val (bi :< n)) (con :< ty) (lift defs) (wkS bounds ++ [(Val _, here)])
 
 -- Add a definition to the context.
 public export
-define : {s : Stage} -> (n : Ident) -> ExprAt s ns -> Context bs ns -> Context bs (ns :< n)
-define {s = stage} n (MkExpr tm (MkAnnotAt ty sort)) (MkContext (Val idents) (Val bindIdents) con sorts defs stages bounds) =
-  MkContext (Val (idents :< n)) (Val bindIdents) (con :< ty) (sorts :< sort) (defs :< tm) (stages :< stage) (wkS bounds)
+define : (n : Ident) -> Expr ns -> Context bs ns -> Context bs (ns :< n)
+define n (MkExpr tm ty) (MkContext (Val idents) (Val bindIdents) con defs bounds) =
+  MkContext (Val (idents :< n)) (Val bindIdents) (con :< ty) (defs :< tm) (wkS bounds)

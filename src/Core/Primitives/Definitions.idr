@@ -43,121 +43,38 @@ data PrimitiveLevel = PrimNative | PrimDeclared
 public export
 data Primitive : PrimitiveClass -> PrimitiveReducibility -> PrimitiveLevel -> Arity -> Type where
   PrimTYPE : Primitive PrimNorm PrimIrreducible PrimNative []
-  PrimCode : Primitive PrimNorm PrimIrreducible PrimNative [(Implicit, "l"), (Explicit, "ty")]
-  PrimQuote : Primitive PrimNorm PrimIrreducible PrimNative [(Implicit, "l"), (Implicit, "ty"), (Explicit, "val")]
-  PrimSplice : Primitive PrimNorm PrimIrreducible PrimNative [(Implicit, "l"), (Implicit, "ty"), (Explicit, "val")]
-  PrimSta : Primitive PrimNorm PrimIrreducible PrimNative [(Explicit, "l")]
-  PrimTypeDyn : Primitive PrimNorm PrimIrreducible PrimNative [(Explicit, "l")]
-  PrimTypeSta : Primitive PrimNorm PrimReducible PrimNative [(Explicit, "l")]
-  PrimLayout : Primitive PrimNorm PrimIrreducible PrimNative []
-  PrimLayoutDyn : Primitive PrimNorm PrimIrreducible PrimNative []
-  PrimSeqLayout : Primitive PrimNorm PrimReducible PrimNative [(Explicit, "a"), (Explicit, "b")]
-  PrimSeqLayoutDyn : Primitive PrimNorm PrimReducible PrimNative [(Explicit, "a"), (Explicit, "b")]
-  PrimZeroLayout : Primitive PrimNorm PrimIrreducible PrimNative []
-  PrimIdxLayout : Primitive PrimNorm PrimIrreducible PrimNative []
-  PrimPtrLayout : Primitive PrimNorm PrimIrreducible PrimNative []
   PrimUNIT : Primitive PrimNorm PrimIrreducible PrimNative []
   PrimTT : Primitive PrimNorm PrimIrreducible PrimNative []
-  PrimUnit : Primitive PrimNorm PrimIrreducible PrimNative []
-  PrimTt : Primitive PrimNorm PrimIrreducible PrimNative []
-  PrimFix : Primitive PrimNeu PrimReducible PrimNative [(Implicit, "l"), (Implicit, "A"), (Explicit, "a")]
-  PrimFIX : Primitive PrimNeu PrimReducible PrimNative [(Implicit, "A"), (Explicit, "a")]
+  PrimFIX : Primitive PrimNeu PrimReducible PrimNative [((Implicit, Zero), "A"), ((Explicit, Unres), "a")]
 
-  PrimSIGMA : Primitive PrimNorm PrimIrreducible PrimDeclared [(Explicit, "A"), (Explicit, "B")]
+  PrimSIGMA : Primitive PrimNorm PrimIrreducible PrimDeclared [((Explicit, Zero), "A"), ((Explicit, Zero), "B")]
   PrimPAIR : Primitive PrimNorm PrimIrreducible PrimDeclared
-    [(Implicit, "A"), (Implicit, "B"), (Explicit, "a"), (Explicit, "b")]
-
-  PrimSigma : Primitive PrimNorm PrimIrreducible PrimDeclared [(Implicit, "ba"), (Implicit, "bb"), (Explicit, "a"), (Explicit, "b")]
-  PrimPair : Primitive PrimNorm PrimIrreducible PrimDeclared
-     [(Implicit, "ba"), (Implicit, "bb"), (Implicit, "a"), (Implicit, "b"), (Explicit, "x"), (Explicit, "y")]
-
-  PrimIO : Primitive PrimNorm PrimIrreducible PrimDeclared [(Implicit, "a"), (Explicit, "A")]
-  PrimIOPure : Primitive PrimNorm PrimIrreducible PrimDeclared [(Implicit, "a"), (Explicit, "A"), (Explicit, "x")]
+    [((Implicit, Zero), "A"), ((Implicit, Zero), "B"), ((Explicit, Unres), "a"), ((Explicit, Unres), "b")]
 
 -- Can't be DecEq without writing out all cases smh
 export
 primEq : (a : Primitive k r na ar) -> (b : Primitive k' r' na' ar') -> Maybe (a ~=~ b)
 primEq PrimTYPE PrimTYPE = Just Refl
 primEq PrimTYPE _ = Nothing
-primEq PrimCode PrimCode = Just Refl
-primEq PrimCode _ = Nothing
-primEq PrimQuote PrimQuote = Just Refl
-primEq PrimQuote _ = Nothing
-primEq PrimSplice PrimSplice = Just Refl
-primEq PrimSplice _ = Nothing
-primEq PrimSta PrimSta = Just Refl
-primEq PrimSta _ = Nothing
-primEq PrimTypeDyn PrimTypeDyn = Just Refl
-primEq PrimTypeDyn _ = Nothing
-primEq PrimTypeSta PrimTypeSta = Just Refl
-primEq PrimTypeSta _ = Nothing
-primEq PrimLayout PrimLayout = Just Refl
-primEq PrimLayout _ = Nothing
-primEq PrimLayoutDyn PrimLayoutDyn = Just Refl
-primEq PrimLayoutDyn _ = Nothing
-primEq PrimSeqLayout PrimSeqLayout = Just Refl
-primEq PrimSeqLayout _ = Nothing
-primEq PrimSeqLayoutDyn PrimSeqLayoutDyn = Just Refl
-primEq PrimSeqLayoutDyn _ = Nothing
-primEq PrimZeroLayout PrimZeroLayout = Just Refl
-primEq PrimZeroLayout _ = Nothing
-primEq PrimIdxLayout PrimIdxLayout = Just Refl
-primEq PrimIdxLayout _ = Nothing
-primEq PrimPtrLayout PrimPtrLayout = Just Refl
-primEq PrimPtrLayout _ = Nothing
 primEq PrimUNIT PrimUNIT = Just Refl
 primEq PrimUNIT _ = Nothing
 primEq PrimTT PrimTT = Just Refl
 primEq PrimTT _ = Nothing
-primEq PrimUnit PrimUnit = Just Refl
-primEq PrimUnit _ = Nothing
-primEq PrimTt PrimTt = Just Refl
-primEq PrimTt _ = Nothing
-primEq PrimSIGMA PrimSIGMA = Just Refl
-primEq PrimSIGMA _ = Nothing
-primEq PrimSigma PrimSigma = Just Refl
-primEq PrimSigma _ = Nothing
-primEq PrimIO PrimIO = Just Refl
-primEq PrimIO _ = Nothing
-primEq PrimPAIR PrimPAIR = Just Refl
-primEq PrimPAIR _ = Nothing
-primEq PrimPair PrimPair = Just Refl
-primEq PrimPair _ = Nothing
-primEq PrimIOPure PrimIOPure = Just Refl
-primEq PrimIOPure _ = Nothing
-primEq PrimFix PrimFix = Just Refl
-primEq PrimFix _ = Nothing
 primEq PrimFIX PrimFIX = Just Refl
 primEq PrimFIX _ = Nothing
+primEq PrimSIGMA PrimSIGMA = Just Refl
+primEq PrimSIGMA _ = Nothing
+primEq PrimPAIR PrimPAIR = Just Refl
+primEq PrimPAIR _ = Nothing
 
 public export
 primName : Primitive k r na ar -> String
 primName PrimTYPE = "TYPE"
-primName PrimCode = "Code"
-primName PrimQuote = "quote"
-primName PrimSplice = "splice"
-primName PrimLayout = "Layout"
-primName PrimZeroLayout = "zero"
-primName PrimIdxLayout = "idx"
-primName PrimPtrLayout = "ptr"
-primName PrimLayoutDyn = "Layout?"
-primName PrimSta = "sta"
-primName PrimTypeDyn = "Type?"
-primName PrimTypeSta = "Type"
-primName PrimSeqLayout = "seq"
-primName PrimSeqLayoutDyn = "seq-dyn"
 primName PrimUNIT = "UNIT"
 primName PrimTT = "TT"
-primName PrimUnit = "Unit"
-primName PrimTt = "tt"
-primName PrimSIGMA = "SIGMA"
-primName PrimSigma = "Sigma"
-primName PrimIO = "IO"
-primName PrimPAIR = "PAIR"
-primName PrimPair = "pair"
-primName PrimIOPure = "io-pure"
-primName PrimFix = "fix"
 primName PrimFIX = "FIX"
+primName PrimSIGMA = "SIGMA"
+primName PrimPAIR = "PAIR"
 
 public export
 Eq (Primitive k r na ar) where
@@ -206,58 +123,18 @@ Show (Primitive k r na ar) where
 public export
 nameToPrim : String -> Maybe PrimitiveAny
 nameToPrim "TYPE"    = Just $ MkPrimitiveAny PrimTYPE
-nameToPrim "Code"    = Just $ MkPrimitiveAny PrimCode
-nameToPrim "quote"   = Just $ MkPrimitiveAny PrimQuote
-nameToPrim "splice"  = Just $ MkPrimitiveAny PrimSplice
-nameToPrim "Layout"  = Just $ MkPrimitiveAny PrimLayout
-nameToPrim "zero"    = Just $ MkPrimitiveAny PrimZeroLayout    
-nameToPrim "idx"     = Just $ MkPrimitiveAny PrimIdxLayout     
-nameToPrim "ptr"     = Just $ MkPrimitiveAny PrimPtrLayout     
-nameToPrim "Layout?" = Just $ MkPrimitiveAny PrimLayoutDyn     
-nameToPrim "sta"     = Just $ MkPrimitiveAny PrimSta           
-nameToPrim "Type?"   = Just $ MkPrimitiveAny PrimTypeDyn       
-nameToPrim "Type"   = Just $ MkPrimitiveAny PrimTypeSta
-nameToPrim "seq"     = Just $ MkPrimitiveAny PrimSeqLayout     
-nameToPrim "seq-dyn" = Just $ MkPrimitiveAny PrimSeqLayoutDyn  
-nameToPrim "UNIT"    = Just $ MkPrimitiveAny PrimUNIT          
-nameToPrim "TT"      = Just $ MkPrimitiveAny PrimTT            
-nameToPrim "Unit"    = Just $ MkPrimitiveAny PrimUnit          
-nameToPrim "tt"      = Just $ MkPrimitiveAny PrimTt            
-nameToPrim "SIGMA"   = Just $ MkPrimitiveAny PrimSIGMA         
-nameToPrim "Sigma"   = Just $ MkPrimitiveAny PrimSigma         
-nameToPrim "IO"      = Just $ MkPrimitiveAny PrimIO            
-nameToPrim "PAIR"    = Just $ MkPrimitiveAny PrimPAIR          
-nameToPrim "pair"    = Just $ MkPrimitiveAny PrimPair          
-nameToPrim "io-pure"    = Just $ MkPrimitiveAny PrimIOPure          
-nameToPrim "FIX"    = Just $ MkPrimitiveAny PrimFIX          
-nameToPrim "fix"    = Just $ MkPrimitiveAny PrimFix          
-nameToPrim _   = Nothing
+nameToPrim "UNIT"    = Just $ MkPrimitiveAny PrimUNIT
+nameToPrim "TT"      = Just $ MkPrimitiveAny PrimTT
+nameToPrim "FIX"     = Just $ MkPrimitiveAny PrimFIX
+nameToPrim "SIGMA"   = Just $ MkPrimitiveAny PrimSIGMA
+nameToPrim "PAIR"    = Just $ MkPrimitiveAny PrimPAIR
+nameToPrim _         = Nothing
 
 public export
 nameToPrimId : {p : _} -> nameToPrim (primName p) === Just (MkPrimitiveAny p)
 nameToPrimId {p = PrimTYPE}         = Refl
-nameToPrimId {p = PrimCode}         = Refl
-nameToPrimId {p = PrimQuote}        = Refl
-nameToPrimId {p = PrimSplice}       = Refl
-nameToPrimId {p = PrimSta}          = Refl
-nameToPrimId {p = PrimTypeDyn}      = Refl
-nameToPrimId {p = PrimTypeSta}      = Refl
-nameToPrimId {p = PrimLayout}       = Refl
-nameToPrimId {p = PrimLayoutDyn}    = Refl
-nameToPrimId {p = PrimSeqLayout}    = Refl
-nameToPrimId {p = PrimSeqLayoutDyn} = Refl
-nameToPrimId {p = PrimZeroLayout}   = Refl
-nameToPrimId {p = PrimIdxLayout}    = Refl
-nameToPrimId {p = PrimPtrLayout}    = Refl
 nameToPrimId {p = PrimUNIT}         = Refl
 nameToPrimId {p = PrimTT}           = Refl
-nameToPrimId {p = PrimUnit}         = Refl
-nameToPrimId {p = PrimTt}           = Refl
+nameToPrimId {p = PrimFIX}          = Refl
 nameToPrimId {p = PrimSIGMA}        = Refl
 nameToPrimId {p = PrimPAIR}         = Refl
-nameToPrimId {p = PrimSigma}        = Refl
-nameToPrimId {p = PrimPair}         = Refl
-nameToPrimId {p = PrimIO}           = Refl
-nameToPrimId {p = PrimIOPure}       = Refl  
-nameToPrimId {p = PrimFix}        = Refl
-nameToPrimId {p = PrimFIX}        = Refl

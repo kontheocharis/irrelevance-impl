@@ -1,4 +1,4 @@
-package solid
+package irr
 version = 0.1.0
 authors = "Constantine Theocharis"
 -- maintainers =
@@ -25,7 +25,7 @@ depends = base >= 0.5.1
 main = Main
 
 -- name of executable
-executable = "solid"
+executable = "irr"
 opts = "--total"
 sourcedir = "src"
 -- builddir =

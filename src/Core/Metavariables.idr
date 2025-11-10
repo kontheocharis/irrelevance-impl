@@ -119,12 +119,12 @@ interface Rename (0 tm : Ctx -> Type) where
 
 -- Should use this function for doing the actual renaming
 public export
-ren : Rename tm => PRen ns ms -> (MetaVar -> MetaValidity) -> tm ms -> Either (PRenError ms) (tm ns)
+ren : forall tm . Rename tm => PRen ns ms -> (MetaVar -> MetaValidity) -> tm ms -> Either (PRenError ms) (tm ns)
 ren p m = rename (MkPlan p SZ m)
 
 -- Renaming for the syntax:
 
-renameLazy : Rename tm => Plan ns ms us -> Lazy (tm (ms ++ us)) -> Either (PRenError ms) (Lazy (tm (ns ++ us)))
+renameLazy : forall tm . Rename tm => Plan ns ms us -> Lazy (tm (ms ++ us)) -> Either (PRenError ms) (Lazy (tm (ns ++ us)))
 renameLazy @{t} p gl = delay <$> rename @{t} p (force gl)
 
 Rename (Term Syntax)
@@ -135,7 +135,7 @@ Rename (Spine ar (Term Syntax)) where
 Rename (PrimitiveApplied k Syntax e) where
   rename p (h $$ sp) = [| pure h $$ rename p sp |]
 
-Rename (Binder md r Syntax n) where
+Rename (Binder r Syntax n) where
   rename p b = traverseBinder (rename p) b
 
 Rename Idx where
@@ -154,15 +154,15 @@ Rename (Variable Syntax) where
 Rename (Body Syntax n) where
   rename p (Delayed t) = [| Delayed (rename (lift p) t) |]
 
-Rename (Binding md r Syntax) where
-  rename p (Bound md {n = n} bind body) = Bound md {n = n} <$> rename p bind <*> rename p body
+Rename (Binding r Syntax) where
+  rename p (Bound {n = n} bind body) = Bound {n = n} <$> rename p bind <*> rename p body
 
 Rename (Head Syntax NA) where
   rename p (SynVar v) = SynVar <$> rename p v
   rename p (SynMeta v) = case p.metaValidity v of
     Valid => pure (SynMeta v)
     Invalid => Left (InvalidMeta v)
-  rename p (SynBinding md r t) = SynBinding md r <$> rename p t
+  rename p (SynBinding r t) = SynBinding r <$> rename p t
   rename p (PrimNeutral prim) = PrimNeutral <$> rename p prim
 
 Rename (HeadApplied Syntax NA) where
@@ -171,7 +171,7 @@ Rename (HeadApplied Syntax NA) where
 public export
 Rename (Term Syntax) where
   rename p (SynApps as) = [| SynApps (rename p as) |]
-  rename p (RigidBinding md t) = RigidBinding md <$> rename p t
+  rename p (RigidBinding t) = RigidBinding <$> rename p t
   rename p (SynPrimNormal prim) = [| SynPrimNormal (rename p prim) |]
 
 -- Actually solving metavariables

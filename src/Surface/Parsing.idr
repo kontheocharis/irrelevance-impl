@@ -248,7 +248,7 @@ piParam : Parse (PParam Functions)
 piParam = atom . located (|>) $
   (paramLike (|>) (\_ => do
     t <- app
-    pure $ \l => MkPParam l (Explicit, "_") (Just t)
+    pure $ \l => MkPParam l ((Explicit, Unres) "_") (Just t)
   ) $ do
     n <- identifier
     ty <- (symbol ":" >> do
