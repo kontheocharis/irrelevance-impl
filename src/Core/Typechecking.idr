@@ -35,12 +35,11 @@ public export
 data TcErrorAt : Ctx -> Type where
   WhenUnifying : Atom ns -> Atom ns -> Unification ns -> TcErrorAt ns
   WrongPiMode : PiMode -> AtomTy ns -> TcErrorAt ns
-  CannotInferStage : TcErrorAt ns
+  CannotInferIdiom : TcErrorAt ns
   UnknownName : Name -> TcErrorAt ns
   TooManyApps : (less : Count ar) -> TcErrorAt ns
   TooFewApps : (more : Count ar) -> TcErrorAt ns
   NotAPi : (subj : AtomTy ns) -> (extra : Count ar) -> TcErrorAt ns
-  CannotCoerceToObj : (givenTy : AtomTy ns) -> TcErrorAt ns
   PrimitiveNotFound : (name : Name) -> TcErrorAt ns
   PrimitiveWrongArity : (name : Name) -> TcErrorAt ns
   PrimitiveDeclsMustBeTopLevel : TcErrorAt ns
@@ -62,7 +61,7 @@ export
 (ns : Ctx) => ShowSyntax => Show (TcErrorAt ns) where
   show (WhenUnifying x y z) = "When unifying `\{show x}` with `\{show y}`: \{show z}"
   show (WrongPiMode mode ty) = "Wrong pi mode \{show mode} for type `\{show ty}`"
-  show CannotInferStage = "Cannot infer stage"
+  show CannotInferIdiom = "Cannot infer idiom"
   show (UnknownName name) = "Unknown name: `\{name}`"
   show (TooManyApps count) = "Too many applications (expected \{show count} fewer)"
   show (TooFewApps count) = "Too few applications (expected \{show count} more)"
@@ -112,8 +111,9 @@ getGoals = get (SnocList Goal)
 -- What inputs a TC operation takes, depending on mode
 public export
 data TcInput : TcMode -> Ctx -> Type where
-  CheckInput : (s : Stage) -> AnnotAt s ms -> TcInput Check ms
-  InferInput : (s : Maybe Stage) -> TcInput Infer ms
+  CheckInput : (s : Idiom) -> Annot ms -> TcInput Check ms
+                    -- this should be a deep maybe
+  InferInput : (s : Maybe Idiom) -> TcInput Infer ms
   
 export
 WeakSized (TcInput md) where
@@ -121,22 +121,22 @@ WeakSized (TcInput md) where
   weakS e (InferInput s) = InferInput s
   
 public export
-(.stage) : TcInput md ns -> Maybe Stage
-(.stage) (CheckInput s _) = Just s
-(.stage) (InferInput s) = s
+(.idiom) : TcInput md ns -> Maybe Idiom
+(.idiom) (CheckInput s _) = Just s
+(.idiom) (InferInput s) = s
   
 public export
-0 weakPreservesStage : Size ns => Size ms
+0 weakPreservesIdiom : Size ns => Size ms
   => {e : Wk ns ms}
   -> {i : TcInput md ms}
-  -> (weakS e i).stage = i.stage
-weakPreservesStage {i = CheckInput s a} = Refl
-weakPreservesStage {i = InferInput s} = Refl
+  -> (weakS e i).idiom = i.idiom
+weakPreservesIdiom {i = CheckInput s a} = Refl
+weakPreservesIdiom {i = InferInput s} = Refl
   
 -- Outputs are expressions corresponding to the inputs
 public export
 0 TcOutput : (md : TcMode) -> (ms : Ctx) -> TcInput md ms -> Type
-TcOutput md ms i = ExprAtMaybe i.stage ms
+TcOutput md ms i = Expr ms
   
 -- This is the type over which we build the typechecking combinators.
 --
@@ -178,7 +178,7 @@ modifyInputs f x Infer = \ctx, s => x Infer (f ctx) s
 
 -- Run some operation after the given typechecking operation.
 public export
-runAfter : HasTc m => (forall bs, ns . {s : _} -> Context bs ns -> ExprAtMaybe s ns -> m ()) -> Tc m -> Tc m
+runAfter : HasTc m => (forall bs, ns . {s : _} -> Context bs ns -> Expr ns -> m ()) -> Tc m -> Tc m
 runAfter f x Check = \ctx, as => do
   y <- x Check ctx as
   f ctx y
@@ -227,44 +227,23 @@ areEqual : HasTc m => Context bs ns -> Atom ns -> Atom ns -> m (Unification ns)
 areEqual @{tc} ctx a b = enterMetas
   (unify {sm = SolvingNotAllowed} @{metas} ctx.scope a b)
 
--- Fit the given annotation to the given kind.
-fitAnnot : HasTc m
-  => Context bs ns
-  -> (s : Stage)
-  -> (k : SortKind s)
-  -> AnnotShape annotTy AtomTy ns
-  -> m (AnnotFor s k annotTy ns)
-fitAnnot ctx s k (MkAnnotShape vty univ) = do
-  d <- reading (freshSortData ctx s k)
-  unify ctx univ d.a.ty
-  pure $ MkAnnotFor d vty
-
 -- Ensure that the given `Maybe Stage` is `Just _`, eliminating with the
 -- supplied method.
-ensureKnownStage : HasTc m
-  => (Context bs ns -> (s : Stage) -> m (ExprAt s ns))
+ensureKnownIdiom : HasTc m
+  => (Context bs ns -> (s : Idiom) -> m (Expr ns))
   -> Context bs ns
   -> (i : TcInput Infer ns)
-  -> m (ExprAtMaybe i.stage ns)
-ensureKnownStage f ctx (InferInput (Just s)) = f ctx s
-ensureKnownStage f ctx (InferInput Nothing) = tcError ctx CannotInferStage
+  -> m (Expr ns)
+ensureKnownIdiom f ctx (InferInput (Just s)) = f ctx s
+ensureKnownIdiom f ctx (InferInput Nothing) = tcError ctx CannotInferIdiom
 
 -- Coerce an expression to a given type.
 coerce : (HasTc m) => Expr ns -> Annot ns -> m (Tm ns)
 coerce expr ann = ?coerceImpl -- for now unimplemented
 
--- Adjust the stage of an expression if needed.
-adjustStage' : (HasTc m) => Context bs ns -> (e : Expr ns) -> (s : Stage) -> m (Either (e.annot.stage = s) (ExprAt s ns))
-adjustStage' ctx e@(MkExpr tm (MkAnnot ty sort Obj)) Obj = pure $ Left Refl
-adjustStage' ctx e@(MkExpr tm (MkAnnot ty sort Mta)) Mta = pure $ Left Refl
-adjustStage' ctx e@(MkExpr tm ann@(MkAnnot ty sort s@Obj)) s'@Mta = do
-  ann' <- fitAnnot ctx Obj loosestSortKind ann.f.shape
-  pure $ Right (quot @{ctx.scope.sizeNames} (MkExpr tm ann'))
-adjustStage' ctx (MkExpr tm ann@(MkAnnot ty sort s@Mta)) s'@Obj = solving (forceCode ctx ty) >>= \case
-  Matching [(_, by), (_, ty)] => do
-    ann' <- fitAnnot ctx Obj loosestSortKind (MkAnnotShape ty (objA by).ty)
-    pure $ Right (splice @{ctxSize ctx} ann' tm)
-  NonMatching other => tcError ctx $ CannotCoerceToObj other 
+-- Adjust the idiom of an expression if needed.
+adjustIdiom' : (HasTc m) => Context bs ns -> (e : Expr ns) -> (s : Idiom) -> m (Expr ns)
+adjustIdiom' = ?todo
 
 -- Adjust the stage of an expression.
 adjustStage : (HasTc m) => Context bs ns -> Expr ns -> (s : Stage) -> m (ExprAt s ns)
@@ -361,7 +340,7 @@ tcSpineExact ctx [] annots = tcError ctx (TooFewApps annots.count)
 tcSpineExact ctx (((md, name), tm) :: tms) ((Val (piMd, piName), annot) :: annots) with (decEq md piMd)
   tcSpineExact ctx (((md, name), tm) :: tms) ((Val (md, piName), annot) :: annots) | Yes Refl = do
     -- use the term directly
-    tm' <- tm Check ctx (CheckInput _ annot.f)
+    tm' <- tm Check ctx (CheckInput md annot.f)
     tms' <- tcSpineExact ctx tms (sub (idS :< tm'.tm) annots)
     pure ((Val _, tm'.p) :: tms')
   tcSpineExact ctx (((Explicit, name), tm) :: tms) ((Val (Implicit, piName), annot) :: annots) | No _ = do
@@ -383,8 +362,8 @@ tcSpine : HasTc m
   -> Annot ns
   -> m (ar ** (Annot ns, Spine ar Expr ns))
 tcSpine ctx [] ann = pure ([] ** (ann, []))
-tcSpine ctx allTms@(((md, name), tm) :: tms) ann = reading (forcePi ctx.scope ann.ty) >>= \case
-  MatchingPi _ (MkPiData resolvedPi (piMd, piName) a b) => case decEq md piMd of
+tcSpine ctx allTms@(((md, name), tm) :: tms) ann = reading (forcePi ctx.scope ann) >>= \case
+  MatchingPi (MkPiData resolvedPi (piMd, piName) a b) => case decEq md piMd of
     Yes Refl => do
       -- use the term directly
       tm' <- tm Check ctx (CheckInput _ a.asAnnot)

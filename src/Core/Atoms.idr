@@ -126,7 +126,7 @@ namespace AtomBody
   apply : Size ns => AtomBody n ns -> Atom ns -> Atom ns
   apply (Choice syn (Closure env v)) arg = promote (eval {val = Val} (env :< arg.val) v)
 
--- An annotation is a type and a stage
+-- An annotation is a type and an idiom
 public export
 Annot : Ctx -> Type
 Annot = AtomTy

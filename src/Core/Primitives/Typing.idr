@@ -16,92 +16,27 @@ import Core.Primitives.Rules
 import Core.Atoms
 import Core.Combinators
 import Core.Context
+%hide Prelude.Interfaces.($>)
 
-arg : {n : _} -> Expr ns -> (Singleton n, Annot ns)
-arg e = (Val _, e.ty)
+arg : {n : _} -> Annot ns -> (Singleton n, Annot ns)
+arg e = (Val _, e)
 
-argN : {m : _} -> (n : String) -> Expr ns -> (Singleton (m, n), Annot ns)
-argN _ e = (Val _, e.ty)
-
-ret : Expr ns -> Annot ns
-ret = (.a)
+argN : {m : _} -> (n : String) -> Annot ns -> (Singleton (m, n), Annot ns)
+argN _ e = (Val _, e)
 
 -- Typing rules for all the *native* primitives
 -- 
 -- Typing for the rest of the primitives is given in the prelude.
 public export covering
 primAnnot : Size ns => (p : Primitive k r PrimNative ar) -> Op ar ns
-primAnnot PrimTYPE = ([], ret $ mta (PrimTYPE $> []))
-primAnnot PrimCode = ([
-      argN "l" $ mta (PrimLayoutDyn $> []),
-      arg $ objZ (PrimTypeDyn $> [(Val _, v "l")])
-    ],
-    ret $ mta (PrimTYPE $> [])
-  )
-primAnnot PrimQuote = ([
-      argN "l" $ mta (PrimLayout $> []),
-      argN "ty" $ objZ (PrimTypeSta $> [(Val _, v "l")]),
-      arg $ obj (v "l") (v "ty")
-    ],
-    ret $ mta (PrimCode $> [(Val _, PrimSta $> [(Val _, v "l")]), (Val _, v "ty")])
-  )
-primAnnot PrimSplice = ([
-      argN "l" $ mta (PrimLayout $> []),
-      argN "ty" $ objZ (PrimTypeSta $> [(Val _, v "l")]),
-      arg $ mta (PrimCode $> [(Val _, PrimSta $> [(Val _, v "l")]), (Val _, v "ty")])
-    ],
-    ret $ obj (v "l") (v "ty")
-  )
-primAnnot PrimSta = ([arg $ mta (PrimLayout $> [])], ret $ mta (PrimLayoutDyn $> []))
-primAnnot PrimTypeDyn = ([
-      arg $ mta (PrimLayoutDyn $> [])
-    ],
-    ret $ objZ (PrimTypeSta $> [(Val _, PrimZeroLayout $> [])])
-  )
-primAnnot PrimTypeSta = ([
-      arg $ mta (PrimLayout $> [])
-    ],
-    ret $ objZ (PrimTypeSta $> [(Val _, PrimZeroLayout $> [])])
-  )
-primAnnot PrimSeqLayout = ([
-      arg $ mta (PrimLayout $> []),
-      arg $ mta (PrimLayout $> [])
-    ],
-    ret $ mta (PrimLayout $> [])
-  )
-primAnnot PrimSeqLayoutDyn = ([
-      arg $ mta (PrimLayoutDyn $> []),
-      arg $ mta (PrimLayoutDyn $> [])
-    ],
-    ret $ mta (PrimLayoutDyn $> [])
-  )
-primAnnot PrimLayout = ([], ret $ mta (PrimTYPE $> []))
-primAnnot PrimZeroLayout = ([], ret $ mta (PrimLayout $> []))
-primAnnot PrimIdxLayout = ([], ret $ mta (PrimLayout $> []))
-primAnnot PrimPtrLayout = ([], ret $ mta (PrimLayout $> []))
-primAnnot PrimLayoutDyn = ([], ret $ mta (PrimTYPE $> []))
-primAnnot PrimUNIT = ([], ret $ mta (PrimTYPE $> []))
-primAnnot PrimTT = ([], ret $ mta (PrimUNIT $> []))
-primAnnot PrimUnit = ([], ret $ objZ (PrimTypeSta $> [(Val _, PrimZeroLayout $> [])]))
-primAnnot PrimTt = ([], ret $ objZ (PrimUnit $> []))
-primAnnot PrimFix = ([
-      argN "l" $ mta (PrimLayout $> []),
-      argN "A" $ objZ (PrimTypeSta $> [(Val _, v "l")]),
-      argN "a" $
-        (pi Obj (Explicit, "x")
-          (MkAnnotFor (ObjSort Sized (v "l")) (v "A"))
-          (MkAnnotFor (ObjSort Sized (v "l")) (close idS $ v "A"))).p
-    ],
-    ret $ obj (v "l") (v "A")
-  )
+primAnnot PrimTYPE = ([], PrimTYPE $> [])
+primAnnot PrimUNIT = ([], PrimTYPE $> [])
+primAnnot PrimTT = ([], PrimUNIT $> [])
 primAnnot PrimFIX = ([
-      argN "A" $ objZ (PrimTYPE $> []),
-      argN "a" $
-        (pi Mta (Explicit, "x")
-          (MkAnnotFor MtaSort (v "A"))
-          (MkAnnotFor MtaSort (close idS $ v "A"))).p
+      argN "A" $ PrimTYPE $> [],
+      argN "a" $ (pi ((Explicit, Unres), "x") (v "A") (close idS $ v "A")).tm
     ],
-    ret $ mta (v "A")
+    (v "A")
   )
 
 -- The argument types for the given primitive
@@ -117,39 +52,10 @@ prim : Size ns => {k : PrimitiveClass} -> {r : PrimitiveReducibility}
   -> Annot (ns ::< ar)
   -> Expr ns
 prim @{s} p sp pRet =
-  let ret = sub {sms = s + sp.count} (idS ::< sp) pRet.ty in
-  let retSort = sub {sms = s + sp.count} (idS ::< sp) pRet.sort in
-  MkExpr (Choice (sPrim p sp.syn) (vPrim p sp.val)) (MkAnnot ret retSort pRet.stage)
+  let ret = sub {sms = s + sp.count} (idS ::< sp) pRet in
+  MkExpr (Choice (sPrim p sp.syn) (vPrim p sp.val)) ret
 
-public export covering
-code : Size ns => AnnotFor Obj k Atom ns -> AnnotAt Mta ns
-code (MkAnnotFor so ty) = PrimCode $> [(Val _, (sortBytes so)), (Val _, ty)] `asTypeIn` mtaA.f
-
-public export covering
-quot : Size ns => ExprFor Obj k ns -> ExprAt Mta ns
-quot (MkExpr tm ann@(MkAnnotFor so ty)) =
-  MkExpr (PrimQuote $> [(Val _, sortBytes so), (Val _, ty), (Val _, tm)]) (code ann)
-
-public export covering
-splice : Size ns => AnnotFor Obj k Atom ns -> Atom ns -> ExprAt Obj ns
-splice uncoded@(MkAnnotFor so ty) tm = MkExpr (PrimSplice $> [(Val _, (sortBytes so)), (Val _, ty), (Val _, tm)]) uncoded.asAnnot
-  
 public export
 data ForceTo : (tm : Ctx -> Type) -> (info : Ctx -> Type) -> Ctx -> Type where
   Matching : forall tm . info ns -> ForceTo tm info ns
   NonMatching : forall tm . tm ns -> ForceTo tm info ns
-  
-public export covering
-forceCode : HasMetas m => Context bs ns
-  -> (potentialCode : Atom ns)
-  -> m SolvingAllowed (ForceTo Atom (PrimArgs PrimCode Atom) ns)
-forceCode ctx potentialCode = matchOnNf ctx.scope potentialCode >>= \s => case s.val of
-  SimpPrimNormal (SimpApplied PrimCode sp) => pure $ Matching (promoteSpine sp)
-  got => do
-    by <- freshMeta ctx Nothing layoutA.f
-    ty <- freshMeta ctx Nothing objZA.f
-    let exp = code @{ctxSize ctx} (MkAnnotFor (ObjSort Dyn by.tm) ty.tm)
-    unify ctx.scope got exp.ty.val >>= \case
-      AreSame => pure $ Matching [(Val _, by.tm), (Val _, ty.tm)]
-      _ => pure $ NonMatching (promote got)
-    

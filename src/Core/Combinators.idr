@@ -15,6 +15,8 @@ import Core.Atoms
 import Core.Context
 import Utils
 
+%hide Prelude.Interfaces.($>)
+
 -- Annotation versions of syntax
 -- All these should only be called on *well-typed terms!*
 

@@ -237,18 +237,18 @@ singleTm : Parse PTm
 
 app : Parse PTm
 
-paramLike : (PiMode -> a -> b) -> (Char -> Parse b) -> Parse a -> Parse b
+paramLike : (Idiom -> a -> b) -> (Char -> Parse b) -> Parse a -> Parse b
 paramLike f orElse p = peek >>= \case
   Nothing => fail Empty
-  Just '(' => (parens (f Explicit <$> p)) <|> orElse '(' -- might be a parenthesised expression
-  Just '[' => (brackets (f Implicit <$> p))
+  Just '(' => (parens (f (Explicit, Unres) <$> p)) <|> orElse '(' -- might be a parenthesised expression
+  Just '[' => (brackets (f (Implicit, Zero) <$> p))
   Just c' => orElse c'
 
 piParam : Parse (PParam Functions)
 piParam = atom . located (|>) $
   (paramLike (|>) (\_ => do
     t <- app
-    pure $ \l => MkPParam l ((Explicit, Unres) "_") (Just t)
+    pure $ \l => MkPParam l ((Explicit, Unres), "_") (Just t)
   ) $ do
     n <- identifier
     ty <- (symbol ":" >> do
@@ -260,7 +260,7 @@ lamParam : Parse (PParam Functions)
 lamParam = atom . located (|>) $
   (paramLike (|>) (\_ => do
     n <- identifier
-    pure $ \l => MkPParam l (Explicit, n) Nothing
+    pure $ \l => MkPParam l ((Explicit, Unres), n) Nothing
   ) $ do
     n <- identifier
     ty <- (symbol ":" >> do
@@ -270,7 +270,7 @@ lamParam = atom . located (|>) $
 
 pairParam : Parse (PParam Pairs)
 pairParam = atom . located (|>) $ do
-  (m, n) <- paramLike (,) (\_ => (Explicit,) <$> identifier) $ identifier
+  (m, n) <- paramLike (,) (\_ => (\x => ((Explicit, Unres), x)) <$> identifier) $ identifier
   ty <- (symbol ":" >> do
       t <- tm
       pure $ Just t) <|> pure Nothing
@@ -288,7 +288,7 @@ piArg = atom . located (|>) $
 
 pairArg : Parse (PArg Pairs)
 pairArg = atom . located (|>) $ do
-  n <- optional $ (paramLike (,) (\_ => (Explicit,) <$> identifier) identifier) <* symbol "="
+  n <- optional $ (paramLike (,) (\x => (\x => ((Explicit, Unres), x)) <$> identifier) identifier) <* symbol "="
   t <- tm
   pure $ \l => MkPArg l n t
 
