@@ -29,7 +29,7 @@ data Target = Functions | Pairs
 
 -- A parameter like x : A
 --
--- Remember: Ident holds a PiMode value as well.
+-- Remember: Ident holds a PiKind value as well.
 public export
 record PParam (t : Target) where
   constructor MkPParam

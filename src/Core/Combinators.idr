@@ -47,8 +47,8 @@ meta m sp annot = MkExpr (aMeta m sp) annot
 
 -- Create a fresh metavariable
 public export covering
-freshMetaAtom : HasMetas m => Context bs ns -> Maybe Name -> m sm (Atom ns)
-freshMetaAtom {ns = ns} ctx n = do
+freshMetaAtom : HasMetas m => Context bs ns -> Maybe Name -> Mode -> m sm (Atom ns)
+freshMetaAtom {ns = ns} ctx n md = do
   m <- newMeta n
   -- Get all the bound variables in the context, and apply them to the
   -- metavariable. This will later result in the metavariable being solved as a
@@ -57,8 +57,8 @@ freshMetaAtom {ns = ns} ctx n = do
 
 -- Create a fresh metavariable
 public export covering
-freshMeta : HasMetas m => Context bs ns -> Maybe Name -> Annot ns -> m sm (Expr ns)
-freshMeta ctx n annot = do -- @@Todo: use type
+freshMeta : HasMetas m => Context bs ns -> Maybe Name -> Mode -> Annot ns -> m sm (Expr ns)
+freshMeta ctx n md annot = do -- @@Todo: use type
   m <- newMeta n
   -- Get all the bound variables in the context, and apply them to the
   -- metavariable. This will later result in the metavariable being solved as a
@@ -116,9 +116,9 @@ public export covering
 forcePi : HasMetas m => Size ns => Scope bs Atom ns -> (potentialPi : AtomTy ns) -> m sm (ForcePi ns)
 forcePi sc potentialPi
   = matchOnNf sc potentialPi >>= \a => case a.val of
-    resolvedPi@(RigidBinding (Bound (BindPi (piMode, piName) a) b)) =>
+    resolvedPi@(RigidBinding (Bound (BindPi (piIdiom, piName) a) b)) =>
       let
-        piData = MkPiData (promote resolvedPi) (piMode, piName) (promote a) (promoteBody b)
+        piData = MkPiData (promote resolvedPi) (piIdiom, piName) (promote a) (promoteBody b)
       in pure $ MatchingPi piData
     v => pure $ OtherwiseNotPi (newVal v potentialPi)
 
@@ -131,8 +131,8 @@ forcePiAt : HasMetas m => Size ns
   -> (potentialPi : AtomTy ns)
   -> m sm (ForcePiAt ns)
 forcePiAt sc (mode, name) potentialPi = forcePi sc potentialPi >>= \case
-  MatchingPi piData@(MkPiData resolvedPi (piMode, piName) a b) =>
-    pure $ case decEq piMode mode of
+  MatchingPi piData@(MkPiData resolvedPi (piIdiom, piName) a b) =>
+    pure $ case decEq piIdiom mode of
       Yes Refl => MatchingPiAt piData
       _ => MismatchingPiAt piData
   OtherwiseNotPi tm => pure $ OtherwiseNotPiAt tm

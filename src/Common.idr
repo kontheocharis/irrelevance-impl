@@ -8,22 +8,22 @@ import Utils
 --
 -- We remember this in the context.
 public export
-data PiMode = Explicit | Implicit
+data PiKind = Explicit | Implicit
             
 public export
-Show PiMode where
+Show PiKind where
   show Explicit = "explicit"
   show Implicit = "implicit"
 
 public export
-DecEq PiMode where
+DecEq PiKind where
   decEq Explicit Explicit = Yes Refl
   decEq Implicit Implicit = Yes Refl
   decEq Explicit Implicit = No (\Refl impossible)
   decEq Implicit Explicit = No (\Refl impossible)
 
 public export
-Eq PiMode where
+Eq PiKind where
   a == b = isYes $ decEq a b
 
 public export
@@ -55,7 +55,7 @@ modeIdentPrefix Unres = ""
 
 public export
 Idiom : Type
-Idiom = (PiMode, Mode)
+Idiom = (PiKind, Mode)
 
 -- A name is a member of a 'context skeleton'
 public export
