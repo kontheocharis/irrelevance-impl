@@ -77,6 +77,16 @@ lam : Size ns
 lam piIdent lamIdent bindTy bodyClosure body = MkExpr
   (promote $ sLam lamIdent body.open.syn)
   (promote $ vPi piIdent bindTy.val bodyClosure.val)
+  
+-- Create a universe type
+public export covering
+aType : Size ns => Annot ns
+aType = promote type
+  
+-- Create a universe expression
+public export covering
+type : Size ns => Expr ns
+type = MkExpr aType aType
           
 -- Create a pi expression
 public export covering

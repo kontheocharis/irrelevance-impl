@@ -6,6 +6,7 @@ import Common
 import Decidable.Equality
 import Data.Singleton
 import Data.DPair
+import Data.Nat
 import Data.Maybe
 import Core.Base
 import Core.Primitives.Definitions
@@ -348,111 +349,95 @@ tcSpine ctx allTms@((((kind, _), name), tm) :: tms) ann = reading (forcePi ctx.s
         Implicit => absurd $ p Refl
   OtherwiseNotPi t => tcError ctx (TooManyApps (map fst tms).count)
   
--- -- Main combinators:
+-- Main combinators:
 
--- -- Introduce a metavariable
--- public export
--- tcMeta : HasTc m => {default Nothing name : Maybe Name} -> Tc m
--- tcMeta {name = name} Check = \ctx, (CheckInput _ annot) => do
---   mta <- reading (freshMeta ctx name annot)
---   whenJust name $ \n => addGoal (MkGoal (Just n) mta.p ctx)
---   pure mta
--- tcMeta {name = name} Infer = ensureKnownStage $ \ctx, stage => do
---   annot <- reading (freshMetaAnnot ctx stage Dyn) -- remember, sized < dyn
---   mta <- reading (freshMeta ctx name annot)
---   whenJust name $ \n => addGoal (MkGoal (Just n) mta.p ctx)
---   pure mta
+-- Introduce a metavariable
+public export
+tcMeta : HasTc m => {default Nothing name : Maybe Name} -> Tc m
+tcMeta {name = name} Check = \ctx, (CheckInput md annot) => do
+  mta <- reading (freshMeta ctx name md annot)
+  whenJust name $ \n => addGoal (MkGoal (Just n) mta ctx)
+  pure mta
+tcMeta {name = name} Infer = ensureKnownMode $ \ctx, md => do
+  annot <- reading (freshMeta ctx Nothing Zero aType)
+  mta <- reading (freshMeta ctx name md annot.tm)
+  whenJust name $ \n => addGoal (MkGoal (Just n) mta ctx)
+  pure mta
 
--- -- Check a function type.
--- public export
--- tcPi : HasTc m
---   => Ident
---   -> Tc m
---   -> Tc m
---   -> Tc m
--- tcPi x a b = switch $ ensureKnownStage $ \ctx, stage => case stage of
---   -- @@Reconsider: Kovacs infers the stage from the domain if it is not given..
---   -- This is more annoying here because of byte metas, but also I am not
---   -- convinced that it is the right thing to do. It might lead to some weird elab results.
---   Mta => do
---     a' <- a Check ctx (CheckInput _ mtaA.f)
---     b' <- b Check (bind x (mta a'.tm).f.a ctx) (CheckInput _ mtaA.f)
---     pure $ pi Mta x (MkAnnotFor MtaSort a'.tm) (MkAnnotFor MtaSort (close idS b'.tm))
---   Obj => do
---     ba <- reading (freshMeta ctx Nothing layoutStaA.f)
---     bb <- reading (freshMeta ctx Nothing layoutStaA.f)
---     a' <- a Check ctx (CheckInput _ (objStaA ba.tm).f)
---     b' <- b Check (bind x (obj ba.tm a'.tm).a.f ctx) (CheckInput _ (wkS $ objStaA bb.tm).f)
---     pure $ pi Obj x
---       (MkAnnotFor (ObjSort Sized ba.tm) a'.tm)
---       (MkAnnotFor (ObjSort Sized bb.tm) (close idS b'.tm))
+-- Check a function type.
+public export
+tcPi : HasTc m
+  => Ident
+  -> Tc m
+  -> Tc m
+  -> Tc m
+tcPi x a b = switch $ \ctx, _ => do
+  a' <- a Check ctx (CheckInput Zero aType)
+  b' <- b Check (bind x a'.tm ctx) (CheckInput Zero aType)
+  pure $ pi x a'.tm (close idS b'.tm)  ---@@TODO: adjust
 
--- -- Check a lambda abstraction.
--- public export
--- tcLam : HasTc m
---   => (n : Ident)
---   -> (bindTy : Maybe (Tc m))
---   -> (body : Tc m)
---   -> Tc m
--- tcLam lamIdent bindTy body Check = \ctx, (CheckInput stage annot@(MkAnnotAt ty sort)) => do
---   reading (forcePiAt ctx.scope stage lamIdent ty) >>= \case
---     MatchingPiAt (MkPiData resolvedPi piIdent a b) => do
---       -- Pi matches
---       whenJust bindTy $ \bindTy' => do
---         MkExpr bindPi _ <- tcPi lamIdent bindTy' tcMeta Infer ctx (InferInput (Just stage))
---         unify ctx resolvedPi bindPi
---       body' <- body Check
---         (bind lamIdent (a.asAnnot) ctx)
---         (CheckInput _ (b.open.asAnnot))
---       pure $ lam stage piIdent lamIdent a b (close idS body'.tm)
---     MismatchingPiAt piStage (MkPiData resolvedPi piIdent a b) => case fst piIdent of
---       -- Wasn't the right kind of pi; if it was implicit, insert a lambda
---       Implicit => do
---         tm' <- insertLam ctx piStage piIdent a b (tcLam lamIdent bindTy body Check)
---         adjustStage ctx tm'.p stage
---       -- Otherwise, we have the wrong kind of pi.
---       _ => tcError ctx (WrongPiKind (fst piIdent) resolvedPi)
---     OtherwiseNotPiAt other => do
---       -- Otherwise try unify with a constructed pi
---       createdPi <- tcPi lamIdent tcMeta tcMeta Infer ctx (InferInput (Just stage))
---       unify ctx other createdPi.tm
---       tcLam lamIdent bindTy body Check ctx (CheckInput stage createdPi.a)
--- tcLam lamIdent bindTy body Infer = ensureKnownStage $ \ctx, stage => do
---   -- @@Reconsider: Same remark as for pis.
---   -- We have a stage, but no type, so just instantiate a meta..
---   annot <- reading (freshMetaAnnot ctx stage Sized)
---   tcLam lamIdent bindTy body Check ctx (CheckInput _ annot)
+-- Check a lambda abstraction.
+public export
+tcLam : HasTc m
+  => (n : Ident)
+  -> (bindTy : Maybe (Tc m))
+  -> (body : Tc m)
+  -> Tc m
+tcLam lamIdent bindTy body Check = \ctx, (CheckInput md ty) => do
+  reading (forcePiAt ctx.scope lamIdent ty) >>= \case
+  -- @@TODO: actually check mode
+    MatchingPiAt (MkPiData resolvedPi piIdent a b) => do
+      -- Pi matches
+      whenJust bindTy $ \bindTy' => do
+        MkExpr bindPi _ <- tcPi lamIdent bindTy' tcMeta Infer ctx (InferInput (Just Zero))
+        unify ctx resolvedPi bindPi
+      body' <- body Check
+        (bind lamIdent a ctx)
+        (CheckInput md b.open)
+      pure $ lam piIdent lamIdent a b (close idS body'.tm)
+    MismatchingPiAt (MkPiData resolvedPi piIdent a b) => case piIdent of
+      -- Wasn't the right kind of pi; if it was implicit, insert a lambda
+      ((Implicit, _), _) => insertLam ctx md piIdent a b (tcLam lamIdent bindTy body Check)
+      -- Otherwise, we have the wrong kind of pi.
+      ((piKind, _), _) => tcError ctx (WrongPiKind piKind resolvedPi)
+    OtherwiseNotPiAt other => do
+      -- Otherwise try unify with a constructed pi
+      createdPi <- tcPi lamIdent tcMeta tcMeta Infer ctx (InferInput (Just Zero))
+      unify ctx other createdPi.tm
+      tcLam lamIdent bindTy body Check ctx (CheckInput md createdPi.tm)
+tcLam lamIdent bindTy body Infer = ensureKnownMode $ \ctx, md => do
+  -- @@Reconsider: Same remark as for pis.
+  -- We have a stage, but no type, so just instantiate a meta..
+  annot <- reading (freshMeta ctx Nothing Zero aType)
+  tcLam lamIdent bindTy body Check ctx (CheckInput md annot.tm)
 
--- -- Check a variable, by looking up in the context
--- public export
--- tcVar : HasTc m => Name -> Tc m
--- tcVar n = switch $ \ctx, (InferInput stage') => case lookup ctx n of
---     Nothing => tcError ctx $ UnknownName n
---     Just idx => do
---       let tm = var idx (MkAnnotAt {s = ctx.stages.indexS idx}
---             (ctx.con.indexS idx)
---             (ctx.sorts.indexS idx))
---       adjustStageIfNeeded ctx tm.p stage'
+-- Check a variable, by looking up in the context
+public export
+tcVar : HasTc m => Name -> Tc m
+tcVar n = switch $ \ctx, (InferInput stage') => case lookup ctx n of
+    Nothing => tcError ctx $ UnknownName n
+    Just idx => pure $ var idx (ctx.con.indexS idx)
+      -- @@TODO adjust
 
--- -- Infer or switch a user-supplied hole
--- --
--- -- We should at least know the stage of the hole. User holes are added to the
--- -- list of goals, which can be displayed after typechecking.
--- public export
--- tcHole : HasTc m => Maybe Name -> Tc m
--- tcHole n = tcMeta {name = n}
+-- Infer or switch a user-supplied hole
+--
+-- We should at least know the stage of the hole. User holes are added to the
+-- list of goals, which can be displayed after typechecking.
+public export
+tcHole : HasTc m => Maybe Name -> Tc m
+tcHole n = tcMeta {name = n}
 
--- -- Check an application
--- public export
--- tcApps : HasTc m
---   => Tc m
---   -> List (Ident, Tc m)
---   -> Tc m
--- tcApps subject args = switch $ \ctx, (InferInput reqStage) => do
---   subject'@(MkExpr _ fnAnnot) <- (.mp) <$> subject Infer ctx (InferInput reqStage)
---   (ar' ** (ret, args')) <- tcSpine ctx args fnAnnot
---   let result = apps subject' args' ret.f
---   adjustStageIfNeeded ctx result.p reqStage
+-- Check an application
+public export
+tcApps : HasTc m
+  => Tc m
+  -> List (Ident, Tc m)
+  -> Tc m
+tcApps subject args = switch $ \ctx, (InferInput md) => do
+  subject'@(MkExpr _ fnAnnot) <- subject Infer ctx (InferInput md)
+  (ar' ** (ret, args')) <- tcSpine ctx args fnAnnot
+  pure $ apps subject' args' ret
+  -- @@TODO: adjust
 
 -- -- Check a primitive
 -- public export
