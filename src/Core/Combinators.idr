@@ -133,16 +133,16 @@ forcePi sc potentialPi
     v => pure $ OtherwiseNotPi (newVal v potentialPi)
 
 -- Given a `potentialPi`, try to match it given that we expect something in
--- `mode` and `stage`.
+-- the kind given by `ident`. DOES NOT check modes.
 public export covering
 forcePiAt : HasMetas m => Size ns
   => Scope bs Atom ns
   -> (ident : Ident)
   -> (potentialPi : AtomTy ns)
   -> m sm (ForcePiAt ns)
-forcePiAt sc (mode, name) potentialPi = forcePi sc potentialPi >>= \case
-  MatchingPi piData@(MkPiData resolvedPi (piIdiom, piName) a b) =>
-    pure $ case decEq piIdiom mode of
+forcePiAt sc ((kind, _), name) potentialPi = forcePi sc potentialPi >>= \case
+  MatchingPi piData@(MkPiData resolvedPi ((piKind, piMode), piName) a b) =>
+    pure $ case decEq piKind kind of
       Yes Refl => MatchingPiAt piData
       _ => MismatchingPiAt piData
   OtherwiseNotPi tm => pure $ OtherwiseNotPiAt tm
