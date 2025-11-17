@@ -191,10 +191,10 @@ unifyValues : {sm : SolvingMode} -> Unify sm (Term Value) (Term Value)
 -- Unification outcome depends on reducibility
 -- Conservative for lets.
 {sm : SolvingMode} -> {r, r' : Reducibility} -> Unify sm (Binder r Value n) (Binder r' Value n') where
-  --@@TODO: unify idioms
-  unifyImpl ctx (BindLam _) (BindLam _) = pure AreSame
-  unifyImpl ctx (BindLet _ tyA a) (BindLet _ tyB b) = noSolving ((unify ctx tyA tyB /\ unify ctx a b) \/ pure DontKnow)
-  unifyImpl ctx (BindPi _ a) (BindPi _ b) = unify ctx a b
+  unifyImpl ctx (BindLam _) (BindLam _) = pure AreSame -- are the same type so no need to check idioms
+  unifyImpl ctx (BindLet (i, n) tyA a) (BindLet (i', n') tyB b)
+    = noSolving ((ifAndOnlyIf (decEq i i') (\Refl => unify ctx tyA tyB /\ unify ctx a b)) \/ pure DontKnow)
+  unifyImpl ctx (BindPi (i, n) a) (BindPi (i', n') b) = ifAndOnlyIf (decEq i i') (\Refl => unify ctx a b)
   unifyImpl ctx {r = Rigid} {r' = Rigid} _ _ = pure AreDifferent
   unifyImpl ctx _ _ = pure DontKnow
 
