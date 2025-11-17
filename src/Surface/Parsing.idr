@@ -313,34 +313,35 @@ directive = do
   s <- identifier
   pure $ MkDirective s
 
-decl : Parse (String, Maybe PTy)
+decl : Parse (Ident, Maybe PTy)
 decl = do
+  md <- optional (symbol "0")
   n <- identifier
   ty <- optional (symbol ":" >> tm)
-  pure (n, ty)
+  pure (((Explicit, maybe Unres (\_ => Zero) md), n), ty)
 
 endStatement : Parse ()
 endStatement = (symbol ";" <|> symbol "\n") <* whitespace anySpace
 
 -- (name : type) = value
-letWithType : String -> PTy -> Parse (Loc -> PBlockStatement)
+letWithType : Ident -> PTy -> Parse (Loc -> PBlockStatement)
 letWithType n ty = do
   symbol "="
   v <- tm
   pure $ \l => PLet l n (Just ty) v
 
 -- (name : type) <- value
-bindWithType : String -> PTy -> Parse (Loc -> PBlockStatement) 
+bindWithType : Ident -> PTy -> Parse (Loc -> PBlockStatement) 
 bindWithType n ty = do
   symbol "<-"
   v <- tm
   pure $ \l => PBind l n (Just ty) v
 
 -- (name : type) ; name [params] = value
-letRec : String -> PTy -> Parse (Loc -> PBlockStatement)
+letRec : Ident -> PTy -> Parse (Loc -> PBlockStatement)
 letRec n ty = do
   endStatement
-  symbol n
+  symbol (snd n)
   tel <- optional lamTel
   symbol "="
   v <- tm
@@ -350,18 +351,18 @@ letRec n ty = do
   pure $ \l => PLetRec l n ty v'
 
 -- (name : type)
-justDecl : String -> PTy -> Parse (Loc -> PBlockStatement)
+justDecl : Ident -> PTy -> Parse (Loc -> PBlockStatement)
 justDecl n ty = pure $ \l => PDecl l n ty
 
 -- (name) := value
-letWithoutType : String -> Parse (Loc -> PBlockStatement)
+letWithoutType : Ident -> Parse (Loc -> PBlockStatement)
 letWithoutType n = do
   symbol ":="
   v <- tm
   pure $ \l => PLet l n Nothing v
 
 -- (name) <- value
-bindWithoutType : String -> Parse (Loc -> PBlockStatement)
+bindWithoutType : Ident -> Parse (Loc -> PBlockStatement)
 bindWithoutType n = do
   symbol "<-"
   v <- tm

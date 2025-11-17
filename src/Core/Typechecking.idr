@@ -200,11 +200,6 @@ runBefore f x Infer = \ctx, as => do
 
 -- Some useful shorthands
 
--- This should probably never be used.
--- promoteWithoutDefs : Size ns -> {d : Domain} -> Term d ns -> Atom ns
--- promoteWithoutDefs s {d = Syntax} tm = Choice tm (eval id tm)
--- promoteWithoutDefs s {d = Value} val = Choice (quote val) val
-
 solving : HasTc m => (forall m' . HasMetas m' => m' SolvingAllowed t) -> m t
 solving @{tc} f = enterMetas (f {m' = metasM @{tc}} @{metas @{tc}})
 
@@ -272,6 +267,10 @@ switch f Check = \ctx, (CheckInput idiom annot) => do
   result <- insert ctx $ f ctx (InferInput (Just idiom))
   unify ctx annot result.annot
   pure result
+  
+public export
+return : HasTc m => (forall ns . Size ns => Expr ns) -> Tc m
+return expr = switch $ \ctx, (InferInput inp) => pure expr 
 
 -- Insert (some kind of an implicit) lambda from the given information.
 --
@@ -288,35 +287,6 @@ insertLam ctx md piIdent bindAnnot bodyAnnot subject = do
     (bind piIdent bindAnnot ctx)
     (CheckInput md bodyAnnot.open)
   pure $ lam piIdent piIdent bindAnnot bodyAnnot (close idS s.tm)
-  
--- -- Check a spine against a telescope.
--- --
--- -- Returns the checked spine.
--- tcSpineExact : HasTc m
---   => Context bs ns
---   -> List (Ident, Tc m)
---   -> Tel ar Annot ns
---   -> m (Spine ar Expr ns)
--- tcSpineExact ctx [] [] = pure []
--- tcSpineExact ctx tms [] = tcError ctx (TooManyApps (map fst tms).count)
--- tcSpineExact ctx [] annots = tcError ctx (TooFewApps annots.count)
--- tcSpineExact ctx (((md, name), tm) :: tms) ((Val (piMd, piName), annot) :: annots) with (decEq md piMd)
---   tcSpineExact ctx (((md, name), tm) :: tms) ((Val (md, piName), annot) :: annots) | Yes Refl = do
---     -- use the term directly
---     tm' <- tm Check ctx (CheckInput (snd md) annot)
---     tms' <- tcSpineExact ctx tms (sub (idS :< tm'.tm) annots)
---     pure ((Val _, tm') :: tms')
---   tcSpineExact ctx ((((Explicit, md'), name), tm) :: tms) ((Val ((Implicit, md), piName), annot) :: annots) | No _ = do
---     -- insert application
---     tm' <- reading (freshMeta ctx Nothing md annot)
---     tms' <- tcSpineExact ctx ((((Explicit, md'), name), tm) :: tms) (sub (idS :< tm'.tm) annots)
---     pure ((Val _, tm') :: tms')
---   tcSpineExact ctx ((((Implicit, md'), name), tm) :: tms) ((Val ((Explicit, md), piName), annot) :: annots) | No _ = do
---     tcError ctx $ WrongPiKind Implicit annot
---   tcSpineExact ctx ((((Explicit, Zero), name), tm) :: tms) ((Val ((Explicit, Zero), piName), annot) :: annots) | No p = absurd $ p Refl
---   tcSpineExact ctx ((((Explicit, Unres), name), tm) :: tms) ((Val ((Explicit, Unres), piName), annot) :: annots) | No p = absurd $ p Refl
---   tcSpineExact ctx ((((Implicit, Zero), name), tm) :: tms) ((Val ((Implicit, Zero), piName), annot) :: annots) | No p = absurd $ p Refl
---   tcSpineExact ctx ((((Implicit, Unres), name), tm) :: tms) ((Val ((Implicit, Unres), piName), annot) :: annots) | No p = absurd $ p Refl
 
 -- Check a spine against a type.
 --
@@ -438,77 +408,67 @@ tcApps subject args = switch $ \ctx, (InferInput md) => do
   (ar' ** (ret, args')) <- tcSpine ctx args fnAnnot
   pure $ apps subject' args' ret
   -- @@TODO: adjust
-
--- -- Check a primitive
--- public export
--- tcPrimUser : HasTc m
---   => {ar : _}
---   -> {r : PrimitiveReducibility}
---   -> {k : PrimitiveClass}
---   -> {l : PrimitiveLevel}
---   -> Primitive k r l ar
---   -> List (Ident, Tc m)
---   -> Tc m
--- tcPrimUser p args = switch $ \ctx, (InferInput stage) => do
---   (pParams, pRet) : Op _ _ <- case l of
---     PrimNative => pure $ primAnnot p
---     PrimDeclared => do
---      (pParams, pRet) <- definedPrimAnnot p
---      pure (
---         sub {over = Atom} [<] pParams,
---         sub {sns = ctxSize ctx + ar.count} {sms = SZ + ar.count} (liftSMany [<]) pRet
---       )
---   sp <- tcSpineExact ctx args pParams
---   adjustStageIfNeeded ctx (prim p (map (.tm) sp) pRet) stage
   
--- -- Check a primitive
--- public export
--- tcPrim : HasTc m
---   => {ar : _}
---   -> {r : PrimitiveReducibility}
---   -> {k : PrimitiveClass}
---   -> {l : PrimitiveLevel}
---   -> Primitive k r l ar
---   -> DispList ar (Tc m)
---   -> Tc m
--- tcPrim p args = tcPrimUser p (dispToList args)
+inferModeIfNone : HasTc m => Maybe Mode -> (Mode -> Tc m) -> Tc m
+inferModeIfNone (Just s) m = m s
+inferModeIfNone Nothing m = \md, ctx, inp => case inp of
+  CheckInput s _ => m s md ctx inp
+  InferInput (Just s) => m s md ctx inp
+  InferInput Nothing => tcError ctx CannotInferMode
   
--- inferStageIfNone : HasTc m => Maybe Stage -> (Stage -> Tc m) -> Tc m
--- inferStageIfNone (Just s) m = m s
--- inferStageIfNone Nothing m = \md, ctx, inp => case inp of
---   CheckInput s _ => m s md ctx inp
---   InferInput (Just s) => m s md ctx inp
---   InferInput Nothing => tcError ctx CannotInferStage
+-- Check a let statement.
+public export
+tcLet : HasTc m
+  => (name : Name)
+  -> (mode : Maybe Mode)
+  -> (ty : (Maybe (Tc m)))
+  -> (tm : Tc m)
+  -> (rest : Tc m)
+  -> Tc m
+tcLet name mode ty tm rest = inferModeIfNone mode $ \mode, md, ctx, inp => do
+  let Val ns = ctx.idents 
+  tm' : Expr ns <- case ty of
+    Just ty => do
+      ty' <- ty Check ctx (CheckInput Zero aType)
+      tm Check ctx (CheckInput mode ty'.tm)
+    Nothing => tm Infer ctx (InferInput (Just mode))
+  rest' <- rest md (define ((Explicit, mode), name) tm' ctx) (wkS inp)
+  let result = sub {sns = ctxSize ctx} {sms = SS $ ctxSize ctx} (idS :< tm'.tm) rest'
+  pure result
   
--- -- Check a let statement.
--- public export
--- tcLet : HasTc m
---   => (name : Name)
---   -> (stage : Maybe Stage)
---   -> (ty : (Maybe (Tc m)))
---   -> (tm : Tc m)
---   -> (rest : Tc m)
---   -> Tc m
--- tcLet name stage ty tm rest = inferStageIfNone stage $ \stage, md, ctx, inp => do
---   let Val ns = ctx.idents
---   tm' : ExprAt stage ns <- case ty of
---     Just ty => do
---       tySort <- solving (freshSortData ctx stage Sized <&> .a)
---       ty' <- ty Check ctx (CheckInput stage tySort)
---       tm Check ctx (CheckInput stage ty'.a)
---     Nothing => tm Infer ctx (InferInput (Just stage))
---   rest' <- rest md (define (Explicit, name) tm' ctx) (wkS inp)
---   let result = sub @{evalExprAtMaybe} {sns = ctxSize ctx} {sms = SS $ ctxSize ctx} (idS :< tm'.tm) rest'
---   pure $ replace {p = \s => ExprAtMaybe s ns} weakPreservesStage result
+-- Check a let-rec statement.
+public export
+tcLetRec : HasTc m
+  => (name : Name)
+  -> (mode : Maybe Mode)
+  -> (ty : (Tc m))
+  -> (tm : Tc m)
+  -> (rest : Tc m)
+  -> Tc m
+tcLetRec name mode ty tm rest = inferModeIfNone mode $ \mode, md, ctx, inp => do
+  let Val ns = ctx.idents
+  let Val bs = ctx.bindIdents
+  ty' <- ty Check ctx (CheckInput Zero aType)
+  let n = ((Explicit, mode), name)
+  let ctx' : Context (bs :< n) (ns :< n)
+      ctx' = bind n ty'.tm ctx
+  tm' : Expr (ns :< n) <- tm Check ctx' (CheckInput mode (wkS ty'.tm))
+  let fixTm : Atom ns = fix tm'.tm ty'.tm
+  rest' <- rest md (define n (MkExpr fixTm ty'.tm) ctx) (wkS inp)
+  let result = sub {sns = ctxSize ctx} {sms = SS $ ctxSize ctx} (idS :< fixTm) rest'
+  pure result
+  
+-- @@TODO: Primitives
   
 -- -- Check a primitive declaration statement.
--- public export
--- tcPrimDecl : HasTc m
---   => (name : Name)
---   -> (stage : Maybe Stage)
---   -> (ty : Tc m)
---   -> (rest : Tc m)
---   -> Tc m
+public export
+tcPrimDecl : HasTc m
+  => (name : Name)
+  -> (mode : Maybe Mode)
+  -> (ty : Tc m)
+  -> (rest : Tc m)
+  -> Tc m
+tcPrimDecl = ?tcPrimDeclImpl
 -- tcPrimDecl name stage ty rest = inferStageIfNone stage $ \stage, md, ctx, inp => do
 --   -- Ensure we are in root scope, otherwise there might be bindings!
 --   let SZ = ctx.scope.sizeBinds
@@ -550,27 +510,68 @@ tcApps subject args = switch $ \ctx, (InferInput md) => do
 --   rest' <- rest md (define (Explicit, name) tmTh.f ctx) (wkS inp)
 --   let result = sub @{evalExprAtMaybe} {sns = nsS} {sms = SS nsS} (idS :< tmTh.tm) rest'
 --   pure $ replace {p = \s => ExprAtMaybe s ns} weakPreservesStage result
+
+-- Check a primitive
+public export
+tcPrimUser : HasTc m
+  => {ar : _}
+  -> {r : PrimitiveReducibility}
+  -> {k : PrimitiveClass}
+  -> {l : PrimitiveLevel}
+  -> Primitive k r l ar
+  -> List (Ident, Tc m)
+  -> Tc m
+tcPrimUser = ?tcPrimUserImpl
+-- tcPrimUser p args = switch $ \ctx, (InferInput stage) => do
+--   (pParams, pRet) : Op _ _ <- case l of
+--     PrimNative => pure $ primAnnot p
+--     PrimDeclared => do
+--      (pParams, pRet) <- definedPrimAnnot p
+--      pure (
+--         sub {over = Atom} [<] pParams,
+--         sub {sns = ctxSize ctx + ar.count} {sms = SZ + ar.count} (liftSMany [<]) pRet
+--       )
+--   sp <- tcSpineExact ctx args pParams
+--   adjustStageIfNeeded ctx (prim p (map (.tm) sp) pRet) stage
   
--- -- Check a let-rec statement.
--- public export
--- tcLetRec : HasTc m
---   => (name : Name)
---   -> (stage : Maybe Stage)
---   -> (ty : (Tc m))
---   -> (tm : Tc m)
---   -> (rest : Tc m)
---   -> Tc m
--- tcLetRec name stage ty tm rest = inferStageIfNone stage $ \stage, md, ctx, inp => do
---   let Val ns = ctx.idents
---   let Val bs = ctx.bindIdents
---   tySortData <- solving (freshSortData ctx stage Sized)
---   let tySort = tySortData.a
---   ty' <- ty Check ctx (CheckInput stage tySort)
---   let n = (Explicit, name)
---   let ctx' : Context (bs :< n) (ns :< n)
---       ctx' = bind n ty'.a ctx
---   tm' : ExprAt stage (ns :< n) <- tm Check ctx' (CheckInput stage (wkS ty'.a))
---   let fixTm : Atom ns = fix stage tm'.tm (MkAnnotFor tySortData ty'.tm)
---   rest' <- rest md (define n (MkExpr fixTm ty'.a) ctx) (wkS inp)
---   let result = sub @{evalExprAtMaybe} {sns = ctxSize ctx} {sms = SS $ ctxSize ctx} (idS :< fixTm) rest'
---   pure $ replace {p = \s => ExprAtMaybe s ns} weakPreservesStage result
+-- Check a primitive
+public export
+tcPrim : HasTc m
+  => {ar : _}
+  -> {r : PrimitiveReducibility}
+  -> {k : PrimitiveClass}
+  -> {l : PrimitiveLevel}
+  -> Primitive k r l ar
+  -> DispList ar (Tc m)
+  -> Tc m
+tcPrim p args = tcPrimUser p (dispToList args)
+  
+-- Check a spine against a telescope.
+--
+-- Returns the checked spine.
+tcSpineExact : HasTc m
+  => Context bs ns
+  -> List (Ident, Tc m)
+  -> Tel ar Annot ns
+  -> m (Spine ar Expr ns)
+tcSpineExact = ?tcSpineExactImpl
+-- tcSpineExact ctx [] [] = pure []
+-- tcSpineExact ctx tms [] = tcError ctx (TooManyApps (map fst tms).count)
+-- tcSpineExact ctx [] annots = tcError ctx (TooFewApps annots.count)
+-- tcSpineExact ctx (((md, name), tm) :: tms) ((Val (piMd, piName), annot) :: annots) with (decEq md piMd)
+--   tcSpineExact ctx (((md, name), tm) :: tms) ((Val (md, piName), annot) :: annots) | Yes Refl = do
+--     -- use the term directly
+--     tm' <- tm Check ctx (CheckInput (snd md) annot)
+--     tms' <- tcSpineExact ctx tms (sub (idS :< tm'.tm) annots)
+--     pure ((Val _, tm') :: tms')
+--   tcSpineExact ctx ((((Explicit, md'), name), tm) :: tms) ((Val ((Implicit, md), piName), annot) :: annots) | No _ = do
+--     -- insert application
+--     tm' <- reading (freshMeta ctx Nothing md annot)
+--     tms' <- tcSpineExact ctx ((((Explicit, md'), name), tm) :: tms) (sub (idS :< tm'.tm) annots)
+--     pure ((Val _, tm') :: tms')
+--   tcSpineExact ctx ((((Implicit, md'), name), tm) :: tms) ((Val ((Explicit, md), piName), annot) :: annots) | No _ = do
+--     tcError ctx $ WrongPiKind Implicit annot
+--   tcSpineExact ctx ((((Explicit, Zero), name), tm) :: tms) ((Val ((Explicit, Zero), piName), annot) :: annots) | No p = absurd $ p Refl
+--   tcSpineExact ctx ((((Explicit, Unres), name), tm) :: tms) ((Val ((Explicit, Unres), piName), annot) :: annots) | No p = absurd $ p Refl
+--   tcSpineExact ctx ((((Implicit, Zero), name), tm) :: tms) ((Val ((Implicit, Zero), piName), annot) :: annots) | No p = absurd $ p Refl
+--   tcSpineExact ctx ((((Implicit, Unres), name), tm) :: tms) ((Val ((Implicit, Unres), piName), annot) :: annots) | No p = absurd $ p Refl

@@ -301,7 +301,7 @@ HasElab Comp where
     pure tm
   
   runTcRoot tc = do
-    atMode Infer tc emptyContext (InferInput (Just Mta)) <&> (.p)
+    atMode Infer tc emptyContext (InferInput (Just Unres))
 
 -- All the stages together in a pipeline
 public export covering

@@ -57,21 +57,6 @@ record PSpine (t : Target) where
   constructor MkPSpine
   actual : List (PArg t)
 
--- -- Varius flags for let statements
--- public export
--- record LetFlags where
---   constructor MkLetFlags
---   -- Which stage to bind the let in
---   stage : Maybe Stage
---   -- Whether the RHS is irrelevant, and if so we can extract its value as long
---   -- as the rest of the block is zero-sized.
---   irr : Bool
-
--- public export
--- letFlagsAreDefault : LetFlags -> Bool
--- letFlagsAreDefault (MkLetFlags Nothing False) = True
--- letFlagsAreDefault _ = False
-
 -- Binary operators
 --
 -- @@Todo: Actually use this
@@ -137,23 +122,23 @@ data PBlockStatement : Type where
   --
   -- x : A
   -- x = a
-  PLetRec : Loc -> (name : String) -> PTy -> PTm -> PBlockStatement
+  PLetRec : Loc -> (name : Ident) -> PTy -> PTm -> PBlockStatement
   -- Declaration without an assignment
   --
   -- x : A
-  PDecl : Loc -> (name : String) -> PTy -> PBlockStatement
+  PDecl : Loc -> (name : Ident) -> PTy -> PBlockStatement
   -- Let statement
   --
   -- x : A = a
   -- or
   -- x := a
-  PLet : Loc -> (name : String) -> Maybe PTy -> PTm -> PBlockStatement
+  PLet : Loc -> (name : Ident) -> Maybe PTy -> PTm -> PBlockStatement
   -- Monadic bind statement
   --
   -- x : A <- a
   -- or
   -- x <- a
-  PBind : Loc -> (name : String) -> Maybe PTy -> PTm -> PBlockStatement
+  PBind : Loc -> (name : Ident) -> Maybe PTy -> PTm -> PBlockStatement
   -- Just a term statement; monadic or returning a value
   --
   -- a
@@ -235,7 +220,7 @@ pPair : PArg Pairs -> PArg Pairs -> PTm
 pPair a b = PPairs (MkPSpine [a, b])
 
 export
-pLet : Loc -> (name : String) -> Maybe PTy -> PTm -> PTm -> PTm
+pLet : Loc -> (name : Ident) -> Maybe PTy -> PTm -> PTm -> PTm
 pLet l n ty tm (PBlock t bs) = PBlock t (bs ++ [PLet l n ty tm])
 pLet l n ty tm u = PBlock True [PLet l n ty tm, PBlockTm dummyLoc u]
 
@@ -316,12 +301,12 @@ Show Directive where
 
 public export covering
 Show PBlockStatement where
-  show (PLetRec _ n ty v) = n ++ " : " ++ show ty ++ "\n" ++ n ++ " = " ++ show v
-  show (PDecl _ n ty) = n ++ " : " ++ show ty
-  show (PLet _ n Nothing v) = n ++ " := " ++ show v
-  show (PLet _ n (Just ty) v) = n ++ " : " ++ show ty ++ " = " ++ show v
-  show (PBind _ n (Just ty) v) = n ++ " : " ++ show ty ++ " <- " ++ show v
-  show (PBind _ n Nothing v) = n ++ " <- " ++ show v
+  show (PLetRec _ n ty v) = show n ++ " : " ++ show ty ++ "\n" ++ snd n ++ " = " ++ show v
+  show (PDecl _ n ty) = show n ++ " : " ++ show ty
+  show (PLet _ n Nothing v) = show n ++ " := " ++ show v
+  show (PLet _ n (Just ty) v) = show n ++ " : " ++ show ty ++ " = " ++ show v
+  show (PBind _ n (Just ty) v) = show n ++ " : " ++ show ty ++ " <- " ++ show v
+  show (PBind _ n Nothing v) = show n ++ " <- " ++ show v
   show (PBlockTm _ t) = show t
   show (PDirSt d s) = show d ++ " " ++ show s
 

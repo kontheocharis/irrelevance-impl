@@ -38,7 +38,7 @@ public export
   fresh = do
     n <- get
     put (n + 1)
-    pure (Explicit, "x" ++ show n)
+    pure ((Explicit, Unres), "x" ++ show n)
   
 -- Unelaborate a term locally (the fresh names will vary across invocations!).
 export
@@ -76,7 +76,7 @@ Unelab (Binding r Syntax) PTm where
     pure $ pLam (MkPParam dummyLoc n Nothing) !(unelab (relabelBody n y))
   unelab (Bound (BindLam n) y) =
     pure $ pLam (MkPParam dummyLoc n Nothing) !(unelab y)
-  unelab (Bound (BindLet (_, n) ty rhs) y) =
+  unelab (Bound (BindLet n ty rhs) y) =
     pure $ pLet dummyLoc n !(Just <$> unelab ty) !(unelab rhs) !(unelab y)
   unelab (Bound (BindPi n dom) y) =
     pure $ pPi (MkPParam dummyLoc n !(Just <$> unelab dom)) !(unelab y)
@@ -134,7 +134,7 @@ export
     = do
       MkPBlockStatements rest <- unelab (MkContext (Val sx) (Val bx) tys (MkScope sb sn zs) dummy)
       ty' <- unelab ty
-      let st = PDecl dummyLoc (snd x) ty'
+      let st = PDecl dummyLoc x ty'
       pure $ MkPBlockStatements (rest ++ [st])
   unelab (MkContext (Val (sx :< x)) (Val bx) (tys :< ty) (MkScope sb (SS sn) (zs :< z)) bs)
     = if onlyBinds
@@ -143,7 +143,7 @@ export
           MkPBlockStatements rest <- unelab (MkContext (Val sx) (Val bx) tys (MkScope sb sn zs) dummy)
           ty' <- unelab ty
           tm' <- unelab z
-          let st = PLet dummyLoc (snd x) (Just ty') tm'
+          let st = PLet dummyLoc x (Just ty') tm'
           pure $ MkPBlockStatements (rest ++ [st])
   unelab _ = pure $ MkPBlockStatements []
   
