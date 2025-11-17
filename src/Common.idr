@@ -49,9 +49,10 @@ Show Mode where
   show Zero = "0"
   show Unres = "ω"
   
-modeIdentPrefix : Mode -> String
-modeIdentPrefix Zero = "0 "
-modeIdentPrefix Unres = ""
+public export
+showMode : Mode -> String
+showMode Zero = "0 "
+showMode Unres = ""
 
 public export
 Idiom : Type
@@ -68,5 +69,5 @@ decEqIdent = %search
 
 public export
 [showIdent] Show Ident where
-  show ((Explicit, m), n) = modeIdentPrefix m ++ n
-  show ((Implicit, m), n) = "[" ++ modeIdentPrefix m ++ n ++ "]"
+  show ((Explicit, m), n) = showMode m ++ n
+  show ((Implicit, m), n) = "[" ++ showMode m ++ n ++ "]"

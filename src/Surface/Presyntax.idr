@@ -246,24 +246,24 @@ showAtomic t = if isAtomic t then show t else "(" ++ show t ++ ")"
 
 public export covering
 Show (PParam Functions) where
-  show (MkPParam l ((Explicit, m), n) (Just t)) = "(" ++ n ++ " : " ++ show t ++ ")"
-  show (MkPParam l ((Implicit, m), n) (Just t)) = "[" ++ n ++ " : " ++ show t ++ "]"
-  show (MkPParam l ((Explicit, m), n) Nothing) = "(" ++ n ++ " : _)"
-  show (MkPParam l ((Implicit, m), n) Nothing) = "[" ++ n ++ "]"
+  show (MkPParam l ((Explicit, m), n) (Just t)) = "(" ++ showMode m ++ n ++ " : " ++ show t ++ ")"
+  show (MkPParam l ((Implicit, m), n) (Just t)) = "[" ++ showMode m ++ n ++ " : " ++ show t ++ "]"
+  show (MkPParam l ((Explicit, m), n) Nothing) = "(" ++ showMode m ++ n ++ " : _)"
+  show (MkPParam l ((Implicit, m), n) Nothing) = "[" ++ showMode m ++ n ++ "]"
 
 public export covering
 Show (PParam Pairs) where
-  show (MkPParam l ((Explicit, m), n) (Just t)) = n ++ " : " ++ show t
+  show (MkPParam l ((Explicit, m), n) (Just t)) = showMode m ++ n ++ " : " ++ show t
   show (MkPParam l ((Explicit, m), "_") (Just t)) = show t
-  show (MkPParam l ((Implicit, m), n) (Just t)) = "[" ++ n ++ "] : " ++ show t
+  show (MkPParam l ((Implicit, m), n) (Just t)) = "[" ++ showMode m ++ n ++ "] : " ++ show t
   show (MkPParam l ((Explicit, m), n) Nothing) = n ++ " : _"
-  show (MkPParam l ((Implicit, m), n) Nothing) = "[" ++ n ++ "]"
+  show (MkPParam l ((Implicit, m), n) Nothing) = "[" ++ showMode m ++ n ++ "]"
 
 public export covering
 Show (PArg Functions) where
-  show (MkPArg l (Just ((Explicit, m), "_")) t) = showAtomic t
-  show (MkPArg l (Just ((Explicit, m), n)) t) = "(" ++ n ++ " = " ++ show t ++ ")"
-  show (MkPArg l (Just ((Implicit, m), n)) t) = "[" ++ n ++ " = " ++ show t ++ "]"
+  show (MkPArg l (Just ((Explicit, m), "_")) t) = showMode m ++ showAtomic t
+  show (MkPArg l (Just ((Explicit, m), n)) t) = "(" ++ showMode m ++ n ++ " = " ++ show t ++ ")"
+  show (MkPArg l (Just ((Implicit, m), n)) t) = "[" ++ showMode m ++ n ++ " = " ++ show t ++ "]"
   show (MkPArg l Nothing t) = showAtomic t
 
 public export covering
@@ -275,7 +275,7 @@ Show (PArg Pairs) where
 -- [A] (x : A) [z : B]
 public export covering
 Show (PTel Functions) where
-  show (MkPTel [MkPParam l ((Explicit, m), "_") (Just t)]) = showAtomic t
+  show (MkPTel [MkPParam l ((Explicit, m), "_") (Just t)]) = showMode m ++ showAtomic t
   show (MkPTel []) = ""
   show (MkPTel ts) = (map show ts |> cast |> joinBy " ")
 
@@ -301,12 +301,12 @@ Show Directive where
 
 public export covering
 Show PBlockStatement where
-  show (PLetRec _ n ty v) = show n ++ " : " ++ show ty ++ "\n" ++ snd n ++ " = " ++ show v
-  show (PDecl _ n ty) = show n ++ " : " ++ show ty
-  show (PLet _ n Nothing v) = show n ++ " := " ++ show v
-  show (PLet _ n (Just ty) v) = show n ++ " : " ++ show ty ++ " = " ++ show v
-  show (PBind _ n (Just ty) v) = show n ++ " : " ++ show ty ++ " <- " ++ show v
-  show (PBind _ n Nothing v) = show n ++ " <- " ++ show v
+  show (PLetRec _ n ty v) = show @{showIdent} n ++ " : " ++ show ty ++ "\n" ++ snd n ++ " = " ++ show v
+  show (PDecl _ n ty) = show @{showIdent} n ++ " : " ++ show ty
+  show (PLet _ n Nothing v) = show @{showIdent} n ++ " := " ++ show v
+  show (PLet _ n (Just ty) v) = show @{showIdent} n ++ " : " ++ show ty ++ " = " ++ show v
+  show (PBind _ n (Just ty) v) = show @{showIdent} n ++ " : " ++ show ty ++ " <- " ++ show v
+  show (PBind _ n Nothing v) = show @{showIdent} n ++ " <- " ++ show v
   show (PBlockTm _ t) = show t
   show (PDirSt d s) = show d ++ " " ++ show s
 

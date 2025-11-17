@@ -27,4 +27,5 @@ foo T = {
   bar
 } 
 
-()
+
+#debug-ctx ()
