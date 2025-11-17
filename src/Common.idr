@@ -43,6 +43,18 @@ DecEq Mode where
 public export
 Eq Mode where
   a == b = isYes $ decEq a b
+          
+public export
+Ord Mode where
+  compare Zero Zero = EQ
+  compare Zero Unres = LT
+  compare Unres Zero = GT
+  compare Unres Unres = EQ
+  
+public export
+(*) : Mode -> Mode -> Mode
+(*) Zero m = Zero
+(*) Unres m = m
 
 public export
 Show Mode where

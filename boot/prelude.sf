@@ -10,22 +10,22 @@ succN n N z s = s (n N z s)
 rec : (0 N : Type) -> N -> (N -> N) -> Nat -> N
 rec N z s n = n N z s
 
-addN : Nat -> Nat -> Nat
-addN x y = rec Nat x succN y
+-- addN : Nat -> Nat -> Nat
+-- addN x y = rec Nat x succN y
 
-add-zero-is-zero : Nat -> Nat
-add-zero-is-zero x = addN x zeroN
+-- add-zero-is-zero : Nat -> Nat
+-- add-zero-is-zero x = addN x zeroN
 
-add-succ-is-succ : Nat -> Nat -> Nat
-add-succ-is-succ x y = addN x (succN y)
+-- add-succ-is-succ : Nat -> Nat -> Nat
+-- add-succ-is-succ x y = addN x (succN y)
 
-foo : Type -> Type
-foo T = {
-  bar : Type;
-  bar = T;
+-- foo : Type -> Type
+-- foo T = {
+--   bar : Type;
+--   bar = T;
 
-  bar
-} 
+--   bar
+-- } 
 
 
 #debug-ctx ()

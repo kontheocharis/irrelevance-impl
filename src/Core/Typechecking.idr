@@ -44,6 +44,7 @@ data TcErrorAt : Ctx -> Type where
   PrimitiveNotFound : (name : Name) -> TcErrorAt ns
   PrimitiveWrongArity : (name : Name) -> TcErrorAt ns
   PrimitiveDeclsMustBeTopLevel : TcErrorAt ns
+  ModeTooWeak : Mode -> Mode -> TcErrorAt ns
 
 -- Packaging an error with its context
 public export
@@ -74,6 +75,7 @@ export
   show (PrimitiveNotFound prim) = "Primitive `\{prim}` does not exist"
   show (PrimitiveWrongArity prim) = "Primitive `\{prim}` has been declared with the wrong arity"
   show PrimitiveDeclsMustBeTopLevel = "Primitive declarations can only appear at the top level"
+  show (ModeTooWeak required given) = "Required mode `\{show required}` is stronger than given mode `\{show given}`"
   
 export
 ShowSyntax => Show TcError where
@@ -295,16 +297,17 @@ insertLam ctx md piIdent bindAnnot bodyAnnot subject = do
 -- Returns the checked spine and the result type.
 tcSpine : HasTc m
   => Context bs ns
+  -> Mode
   -> List (Ident, Tc m)
   -> Annot ns
   -> m (ar ** (Annot ns, Spine ar Expr ns))
-tcSpine ctx [] ann = pure ([] ** (ann, []))
-tcSpine ctx allTms@((((kind, _), name), tm) :: tms) ann = reading (forcePi ctx.scope ann) >>= \case
+tcSpine ctx md [] ann = pure ([] ** (ann, []))
+tcSpine ctx md allTms@((((kind, _), name), tm) :: tms) ann = reading (forcePi ctx.scope ann) >>= \case
   MatchingPi (MkPiData resolvedPi ((piKind, piMd), piName) a b) => case decEq kind piKind of
     Yes Refl => do
       -- use the term directly
-      tm' <- tm Check ctx (CheckInput piMd a)
-      (ar ** (ann', tms')) <- tcSpine ctx tms (apply b tm'.tm)
+      tm' <- tm Check ctx (CheckInput (md * piMd) a)
+      (ar ** (ann', tms')) <- tcSpine ctx md tms (apply b tm'.tm)
       pure (((kind, piMd), name) :: ar ** (ann', (Val _, tm') :: tms'))
     No p => case piKind of
       Explicit => case kind of
@@ -313,8 +316,8 @@ tcSpine ctx allTms@((((kind, _), name), tm) :: tms) ann = reading (forcePi ctx.s
       Implicit => case kind of
         Explicit => do
           -- insert application
-          tm' <- reading (freshMeta ctx Nothing piMd a)
-          (ar ** (ann', tms')) <- tcSpine ctx allTms (apply b tm'.tm)
+          tm' <- reading (freshMeta ctx Nothing (md * piMd) a)
+          (ar ** (ann', tms')) <- tcSpine ctx md allTms (apply b tm'.tm)
           pure (((piKind, piMd), piName) :: ar ** (ann', (Val _, tm') :: tms'))
         Implicit => absurd $ p Refl
   OtherwiseNotPi t => tcError ctx (TooManyApps (map fst tms).count)
@@ -353,18 +356,17 @@ tcLam : HasTc m
   -> (bindTy : Maybe (Tc m))
   -> (body : Tc m)
   -> Tc m
-tcLam lamIdent bindTy body Check = \ctx, (CheckInput md ty) => do
+tcLam lamIdent@((lamIdiom, lamMode), lamName) bindTy body Check = \ctx, (CheckInput md ty) => do
   reading (forcePiAt ctx.scope lamIdent ty) >>= \case
-  -- @@TODO: actually check mode
-    MatchingPiAt (MkPiData resolvedPi piIdent a b) => do
+    MatchingPiAt (MkPiData resolvedPi piIdent@(piIdiom, piName) a b) => do
       -- Pi matches
       whenJust bindTy $ \bindTy' => do
         MkExpr bindPi _ <- tcPi lamIdent bindTy' tcMeta Infer ctx (InferInput (Just Zero))
         unify ctx resolvedPi bindPi
       body' <- body Check
-        (bind lamIdent a ctx)
+        (bind (piIdiom, lamName) a ctx)
         (CheckInput md b.open)
-      pure $ lam piIdent lamIdent a b (close idS body'.tm)
+      pure $ lam piIdent (piIdiom, lamName) a b (close idS body'.tm)
     MismatchingPiAt (MkPiData resolvedPi piIdent a b) => case piIdent of
       -- Wasn't the right kind of pi; if it was implicit, insert a lambda
       ((Implicit, _), _) => insertLam ctx md piIdent a b (tcLam lamIdent bindTy body Check)
@@ -376,7 +378,6 @@ tcLam lamIdent bindTy body Check = \ctx, (CheckInput md ty) => do
       unify ctx other createdPi.tm
       tcLam lamIdent bindTy body Check ctx (CheckInput md createdPi.tm)
 tcLam lamIdent bindTy body Infer = ensureKnownMode $ \ctx, md => do
-  -- @@Reconsider: Same remark as for pis.
   -- We have a stage, but no type, so just instantiate a meta..
   annot <- reading (freshMeta ctx Nothing Zero aType)
   tcLam lamIdent bindTy body Check ctx (CheckInput md annot.tm)
@@ -384,9 +385,14 @@ tcLam lamIdent bindTy body Infer = ensureKnownMode $ \ctx, md => do
 -- Check a variable, by looking up in the context
 public export
 tcVar : HasTc m => Name -> Tc m
-tcVar n = switch $ \ctx, (InferInput stage') => case lookup ctx n of
+tcVar n = switch $ ensureKnownMode $ \ctx, md => case lookup ctx n of
     Nothing => tcError ctx $ UnknownName n
-    Just idx => pure $ var idx (ctx.con.indexS idx)
+    Just idx => do
+      let Val vars = ctx.idents
+      let ((_, varMode), _) = getIdx vars idx
+      if varMode >= md
+         then pure $ var idx (ctx.con.indexS idx)
+         else tcError ctx $ ModeTooWeak md varMode
       -- @@TODO adjust
 
 -- Infer or switch a user-supplied hole
@@ -403,9 +409,9 @@ tcApps : HasTc m
   => Tc m
   -> List (Ident, Tc m)
   -> Tc m
-tcApps subject args = switch $ \ctx, (InferInput md) => do
-  subject'@(MkExpr _ fnAnnot) <- subject Infer ctx (InferInput md)
-  (ar' ** (ret, args')) <- tcSpine ctx args fnAnnot
+tcApps subject args = switch $ ensureKnownMode $ \ctx, md => do
+  subject'@(MkExpr _ fnAnnot) <- subject Infer ctx (InferInput (Just md))
+  (ar' ** (ret, args')) <- tcSpine ctx md args fnAnnot
   pure $ apps subject' args' ret
   -- @@TODO: adjust
   
@@ -465,19 +471,20 @@ tcLetRec name mode ty tm rest = inferModeIfNone mode $ \mode, md, ctx, inp => do
 -- @@TODO: Deduplicate!
 tcSpineExact : HasTc m
   => Context bs ns
+  -> Mode
   -> List (Ident, Tc m)
   -> Tel ar Annot ns
   -> m (Spine ar Expr ns)
-tcSpineExact ctx [] [] = pure []
-tcSpineExact ctx tms [] = tcError ctx (TooManyApps (map fst tms).count)
-tcSpineExact ctx [] annots = tcError ctx (TooFewApps annots.count)
-tcSpineExact ctx ((((kind, md), name), tm) :: tms) ((Val ((piKind, piMd), piName), annot) :: annots) with (decEq kind piKind)
-  tcSpineExact ctx ((((kind, md), name), tm) :: tms) ((Val ((kind, piMd), piName), annot) :: annots) | Yes Refl = do
+tcSpineExact ctx md [] [] = pure []
+tcSpineExact ctx md tms [] = tcError ctx (TooManyApps (map fst tms).count)
+tcSpineExact ctx md [] annots = tcError ctx (TooFewApps annots.count)
+tcSpineExact ctx md ((((kind, md'), name), tm) :: tms) ((Val ((piKind, piMd), piName), annot) :: annots) with (decEq kind piKind)
+  tcSpineExact ctx md ((((kind, md'), name), tm) :: tms) ((Val ((kind, piMd), piName), annot) :: annots) | Yes Refl = do
     -- use the term directly
-    tm' <- tm Check ctx (CheckInput piMd annot)
-    tms' <- tcSpineExact ctx tms (sub (idS :< tm'.tm) annots)
+    tm' <- tm Check ctx (CheckInput (md * piMd) annot)
+    tms' <- tcSpineExact ctx md tms (sub (idS :< tm'.tm) annots)
     pure ((Val _, tm') :: tms')
-  tcSpineExact ctx ((((kind, md), name), tm) :: tms) ((Val ((piKind, piMd), piName), annot) :: annots) | No p = do
+  tcSpineExact ctx md ((((kind, md'), name), tm) :: tms) ((Val ((piKind, piMd), piName), annot) :: annots) | No p = do
     case piKind of
       Explicit => case kind of
         Explicit => absurd $ p Refl
@@ -485,8 +492,8 @@ tcSpineExact ctx ((((kind, md), name), tm) :: tms) ((Val ((piKind, piMd), piName
       Implicit => case kind of
         Explicit => do
           -- insert application
-          tm' <- reading (freshMeta ctx Nothing piMd annot)
-          tms' <- tcSpineExact ctx ((((kind, md), name), tm) :: tms) (sub (idS :< tm'.tm) annots)
+          tm' <- reading (freshMeta ctx Nothing (md * piMd) annot)
+          tms' <- tcSpineExact ctx md ((((kind, md'), name), tm) :: tms) (sub (idS :< tm'.tm) annots)
           pure ((Val _, tm') :: tms')
         Implicit => absurd $ p Refl
   
@@ -549,7 +556,7 @@ tcPrimUser : HasTc m
   -> Primitive k r l ar
   -> List (Ident, Tc m)
   -> Tc m
-tcPrimUser p args = switch $ \ctx, (InferInput mode) => do
+tcPrimUser p args = switch $ ensureKnownMode $ \ctx, md => do
   (pParams, pRet) : Op _ _ <- case l of
     PrimNative => pure $ primAnnot p
     PrimDeclared => do
@@ -558,7 +565,7 @@ tcPrimUser p args = switch $ \ctx, (InferInput mode) => do
         sub {over = Atom} [<] pParams,
         sub {over = Atom} {sns = ctxSize ctx + ar.count} {sms = SZ + ar.count} (liftSMany [<]) pRet
       )
-  sp <- tcSpineExact ctx args pParams
+  sp <- tcSpineExact ctx md args pParams
   pure $ prim p (map (.tm) sp) pRet
   -- @@TODO: adjust
   
