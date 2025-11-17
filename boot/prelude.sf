@@ -1,5 +1,5 @@
-Nat : TYPE
-Nat = (P : TYPE) -> P -> (P -> P) -> P
+Nat : Type
+Nat = (P : Type) -> P -> (P -> P) -> P
 
 zeroN : Nat
 zeroN N z s = z
@@ -7,7 +7,7 @@ zeroN N z s = z
 succN : Nat -> Nat
 succN n N z s = s (n N z s)
 
-rec : (N : TYPE) -> N -> (N -> N) -> Nat -> N
+rec : (0 N : Type) -> N -> (N -> N) -> Nat -> N
 rec N z s n = n N z s
 
 addN : Nat -> Nat -> Nat
@@ -19,9 +19,9 @@ add-zero-is-zero x = addN x zeroN
 add-succ-is-succ : Nat -> Nat -> Nat
 add-succ-is-succ x y = addN x (succN y)
 
-foo : TYPE -> TYPE
+foo : Type -> Type
 foo T = {
-  bar : TYPE;
+  bar : Type;
   bar = T;
 
   bar

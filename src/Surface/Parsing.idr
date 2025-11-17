@@ -237,44 +237,56 @@ singleTm : Parse PTm
 
 app : Parse PTm
 
-paramLike : (Idiom -> a -> b) -> (Char -> Parse b) -> Parse a -> Parse b
+mode : Parse Mode
+mode = do
+  md <- optional (symbol "0")
+  pure $ case md of
+    Nothing => Unres
+    Just _ => Zero
+
+paramLike : (PiKind -> a -> b) -> (Char -> Parse b) -> Parse a -> Parse b
 paramLike f orElse p = peek >>= \case
   Nothing => fail Empty
-  Just '(' => (parens (f (Explicit, Unres) <$> p)) <|> orElse '(' -- might be a parenthesised expression
-  Just '[' => (brackets (f (Implicit, Zero) <$> p))
+  Just '(' => (parens (f Explicit <$> p)) <|> orElse '(' -- might be a parenthesised expression
+  Just '[' => (brackets (f Implicit <$> p))
   Just c' => orElse c'
 
 piParam : Parse (PParam Functions)
 piParam = atom . located (|>) $
   (paramLike (|>) (\_ => do
+    m <- mode
     t <- app
-    pure $ \l => MkPParam l ((Explicit, Unres), "_") (Just t)
+    pure $ \l => MkPParam l ((Explicit, m), "_") (Just t)
   ) $ do
+    m <- mode
     n <- identifier
     ty <- (symbol ":" >> do
         t <- tm
         pure $ Just t) <|> pure Nothing
-    pure $ \m, l => MkPParam l (m, n) ty)
+    pure $ \k, l => MkPParam l ((k, m), n) ty)
 
 lamParam : Parse (PParam Functions)
 lamParam = atom . located (|>) $
   (paramLike (|>) (\_ => do
+    m <- mode
     n <- identifier
-    pure $ \l => MkPParam l ((Explicit, Unres), n) Nothing
+    pure $ \l => MkPParam l ((Explicit, m), n) Nothing
   ) $ do
+    m <- mode
     n <- identifier
     ty <- (symbol ":" >> do
         t <- tm
         pure $ Just t) <|> pure Nothing
-    pure $ \m, l => MkPParam l (m, n) ty)
+    pure $ \k, l => MkPParam l ((k, m), n) ty)
 
 pairParam : Parse (PParam Pairs)
 pairParam = atom . located (|>) $ do
-  (m, n) <- paramLike (,) (\_ => (\x => ((Explicit, Unres), x)) <$> identifier) $ identifier
+  m <- mode
+  (k, n) <- paramLike (,) (\_ => (\x => (Explicit, x)) <$> identifier) $ identifier
   ty <- (symbol ":" >> do
       t <- tm
       pure $ Just t) <|> pure Nothing
-  pure $ \l => MkPParam l (m, n) ty
+  pure $ \l => MkPParam l ((k, m), n) ty
 
 piArg : Parse (PArg Functions)
 piArg = atom . located (|>) $
@@ -284,11 +296,12 @@ piArg = atom . located (|>) $
   ) $ do
     n <- optional (identifier <* symbol "=")
     t <- tm
-    pure $ \m, l => MkPArg l (Just (m, fromMaybe "_" n)) t)
+    pure $ \k, l => MkPArg l (Just ((k, Unres), fromMaybe "_" n)) t)
 
 pairArg : Parse (PArg Pairs)
 pairArg = atom . located (|>) $ do
-  n <- optional $ (paramLike (,) (\x => (\x => ((Explicit, Unres), x)) <$> identifier) identifier) <* symbol "="
+  n <- optional $ (paramLike (\a, b => ((a, Unres), b))
+    (\x => (\x => ((Explicit, Unres), x)) <$> identifier) identifier) <* symbol "="
   t <- tm
   pure $ \l => MkPArg l n t
 

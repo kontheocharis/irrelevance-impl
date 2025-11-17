@@ -69,12 +69,12 @@ primEq PrimPAIR _ = Nothing
 
 public export
 primName : Primitive k r na ar -> String
-primName PrimTYPE = "TYPE"
-primName PrimUNIT = "UNIT"
-primName PrimTT = "TT"
-primName PrimFIX = "FIX"
-primName PrimSIGMA = "SIGMA"
-primName PrimPAIR = "PAIR"
+primName PrimTYPE = "Type"
+primName PrimUNIT = "Unit"
+primName PrimTT = "tt"
+primName PrimFIX = "fix"
+primName PrimSIGMA = "Sigma"
+primName PrimPAIR = "pair"
 
 public export
 Eq (Primitive k r na ar) where
@@ -122,12 +122,12 @@ Show (Primitive k r na ar) where
 
 public export
 nameToPrim : String -> Maybe PrimitiveAny
-nameToPrim "TYPE"    = Just $ MkPrimitiveAny PrimTYPE
-nameToPrim "UNIT"    = Just $ MkPrimitiveAny PrimUNIT
-nameToPrim "TT"      = Just $ MkPrimitiveAny PrimTT
-nameToPrim "FIX"     = Just $ MkPrimitiveAny PrimFIX
-nameToPrim "SIGMA"   = Just $ MkPrimitiveAny PrimSIGMA
-nameToPrim "PAIR"    = Just $ MkPrimitiveAny PrimPAIR
+nameToPrim "Type"    = Just $ MkPrimitiveAny PrimTYPE
+nameToPrim "Unit"    = Just $ MkPrimitiveAny PrimUNIT
+nameToPrim "tt"      = Just $ MkPrimitiveAny PrimTT
+nameToPrim "fix"     = Just $ MkPrimitiveAny PrimFIX
+nameToPrim "Sigma"   = Just $ MkPrimitiveAny PrimSIGMA
+nameToPrim "pair"    = Just $ MkPrimitiveAny PrimPAIR
 nameToPrim _         = Nothing
 
 public export
